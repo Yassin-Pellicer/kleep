@@ -1,6 +1,8 @@
 mod deepseek;
 
 use std::collections::HashSet;
+use std::process::Stdio;
+use std::time::Duration;
 
 use chrono::Local;
 use serde::Deserialize;
@@ -13,10 +15,22 @@ use crate::structs::{
 const MAX_TOOL_ROUNDS: usize = 3;
 const SEARCH_RESULTS: u8 = 5;
 const MAX_SOURCES: usize = 8;
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(15);
+const MAX_COMMAND_OUTPUT: usize = 4_000;
 
 #[derive(Debug, Deserialize)]
 struct WebSearchArgs {
     query: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RunCommandArgs {
+    command: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenAppArgs {
+    app: String,
 }
 
 fn system_prompt(voice: bool) -> String {
@@ -44,6 +58,15 @@ fn system_prompt(voice: bool) -> String {
          for ordinary conversation, general knowledge, coding help, or personal actions.\n\
          When you use web_search, base your answer on the returned summaries. Never invent \
          search results.\n\
+         Use the open_app tool whenever the user asks to open, launch, or start a desktop \
+         application; it resolves names such as spotify or chrome against installed \
+         apps. Only say the app opened when the tool reports success.\n\
+         Use the run_command tool when the user asks you to perform a CLI or system action \
+         that open_app cannot handle, such as changing a setting or running a command. For \
+         GUI programs, launch them in the background and redirect output so the command \
+         returns immediately, for example \
+         `nohup google-chrome-stable >/dev/null 2>&1 &`. Only say an action succeeded when \
+         the tool reports success.\n\
          If no tool is needed, answer directly.\n\n\
          {style}\n\
          If the user asks for an action you cannot perform with the available tools, say so \
@@ -137,16 +160,19 @@ pub async fn assistant_chat(
         }));
 
         for call in message.tool_calls {
-            let result = if call.function.name == "web_search" {
-                run_web_search(
-                    &api_key,
-                    &call.function.arguments,
-                    &mut sources,
-                    &mut seen_urls,
-                )
-                .await
-            } else {
-                format!("Unknown tool `{}`.", call.function.name)
+            let result = match call.function.name.as_str() {
+                "web_search" => {
+                    run_web_search(
+                        &api_key,
+                        &call.function.arguments,
+                        &mut sources,
+                        &mut seen_urls,
+                    )
+                    .await
+                }
+                "run_command" => run_command(&call.function.arguments).await,
+                "open_app" => run_open_app(&call.function.arguments).await,
+                other => format!("Unknown tool `{other}`."),
             };
 
             conversation.push(json!({
@@ -156,6 +182,85 @@ pub async fn assistant_chat(
             }));
         }
     }
+}
+
+async fn run_open_app(arguments: &str) -> String {
+    let args: OpenAppArgs = match serde_json::from_str(arguments) {
+        Ok(args) => args,
+        Err(_) => return "Invalid arguments for open_app.".to_string(),
+    };
+
+    let app = args.app.trim().to_string();
+    if app.is_empty() {
+        return "No application name was provided.".to_string();
+    }
+
+    match tauri::async_runtime::spawn_blocking(move || crate::apps::launch_by_name(&app)).await {
+        Ok(Ok(name)) => format!("Opened {name}."),
+        Ok(Err(error)) => error,
+        Err(error) => format!("Could not open the app: {error}"),
+    }
+}
+
+async fn run_command(arguments: &str) -> String {
+    let args: RunCommandArgs = match serde_json::from_str(arguments) {
+        Ok(args) => args,
+        Err(_) => return "Invalid arguments for run_command.".to_string(),
+    };
+
+    let command = args.command.trim();
+    if command.is_empty() {
+        return "The command was empty.".to_string();
+    }
+
+    let mut process = tokio::process::Command::new("sh");
+    process
+        .arg("-lc")
+        .arg(command)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true);
+
+    match tokio::time::timeout(COMMAND_TIMEOUT, process.output()).await {
+        Err(_) => format!(
+            "Command timed out after {} seconds. It may still be running in the background.",
+            COMMAND_TIMEOUT.as_secs()
+        ),
+        Ok(Err(error)) => format!("Could not run the command: {error}"),
+        Ok(Ok(output)) => describe_command_output(&output),
+    }
+}
+
+fn describe_command_output(output: &std::process::Output) -> String {
+    let mut parts = vec![match output.status.code() {
+        Some(code) if code == 0 => "exit status: success".to_string(),
+        Some(code) => format!("exit status: {code}"),
+        None => "exit status: terminated by a signal".to_string(),
+    }];
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stdout = stdout.trim();
+    if !stdout.is_empty() {
+        parts.push(format!("stdout:\n{}", truncate_output(stdout)));
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.trim();
+    if !stderr.is_empty() {
+        parts.push(format!("stderr:\n{}", truncate_output(stderr)));
+    }
+
+    parts.join("\n")
+}
+
+fn truncate_output(text: &str) -> String {
+    if text.chars().count() <= MAX_COMMAND_OUTPUT {
+        return text.to_string();
+    }
+
+    let truncated: String = text.chars().take(MAX_COMMAND_OUTPUT).collect();
+    format!("{truncated}… [output truncated]")
 }
 
 async fn run_web_search(

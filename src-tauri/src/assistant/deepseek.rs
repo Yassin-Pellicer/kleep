@@ -103,6 +103,49 @@ pub async fn complete(
                     }
                 }
             }
+        }, {
+            "type": "function",
+            "function": {
+                "name": "open_app",
+                "description": "Open a desktop application by name. Use this whenever the user \
+                                asks to open, launch, or start an app. It resolves the name \
+                                against the applications installed on the user's machine.",
+                "strict": true,
+                "parameters": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["app"],
+                    "properties": {
+                        "app": {
+                            "type": "string",
+                            "description": "The application name, such as \"spotify\" or \"chrome\"."
+                        }
+                    }
+                }
+            }
+        }, {
+            "type": "function",
+            "function": {
+                "name": "run_command",
+                "description": "Run a non-interactive shell command on the user's Linux machine. \
+                                Use this to perform desktop actions such as opening applications \
+                                or changing system state. For GUI programs, launch them in the \
+                                background and redirect output (for example \
+                                `nohup google-chrome-stable >/dev/null 2>&1 &`) so the command \
+                                returns immediately.",
+                "strict": true,
+                "parameters": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["command"],
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "description": "The shell command to run."
+                        }
+                    }
+                }
+            }
         }],
         "tool_choice": "auto"
     });
