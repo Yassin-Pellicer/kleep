@@ -52,6 +52,7 @@ body {
 }
 
 .palette__bar {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -95,6 +96,15 @@ body {
   opacity: 0.55;
 }
 
+.palette__field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+}
+
 .palette__input {
   flex: 1;
   min-width: 0;
@@ -111,6 +121,10 @@ body {
 
 .palette__input::placeholder {
   color: rgba(244, 244, 245, 0.4);
+}
+
+.palette__input--recording {
+  caret-color: transparent;
 }
 
 .palette__hint {

@@ -23,9 +23,12 @@ fn system_prompt(voice: bool) -> String {
     let now = Local::now();
 
     let style = if voice {
-        "The user is speaking. Answer in the same language they used. Reply in one or two \
-         short sentences. Be warm and friendly, but not overly enthusiastic or chatty. Avoid \
-         filler, lists, Markdown, and URLs."
+        "The user is speaking and will hear your answer read aloud. Answer in the same \
+         language they used. Write exactly as it should be spoken: one or two short \
+         sentences of plain prose. Never use parentheses, brackets, bullet points, lists, \
+         Markdown, emoji, code, URLs, links, or source citations. Say the answer directly \
+         instead of pointing to a page. Be concise, precise, and friendly, with a very \
+         slight touch of humor when it fits naturally."
     } else {
         "Keep answers concise and on point: at most 3 short sentences, or a short bullet list \
          when listing facts. Use Markdown when it improves readability: short paragraphs, \

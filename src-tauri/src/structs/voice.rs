@@ -16,4 +16,6 @@ pub struct VoiceRecordingStatus {
     pub speech: bool,
     #[serde(default)]
     pub silence: f64,
+    #[serde(default)]
+    pub level: f64,
 }

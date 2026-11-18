@@ -6,8 +6,11 @@ import { launchApp } from "../AppList/apps";
 import { useAppList } from "../AppList/useAppList";
 import { useAppSearch } from "../AppList/useAppSearch";
 import { useAssistant } from "../Chat/useAssistant";
+import { useClipboard } from "../Clipboard/useClipboard";
+import { useClipboardList } from "../Clipboard/useClipboardList";
 import { useVoice } from "../Voice/useVoice";
-import type { AppEntry, VoiceTranscript } from "../../types";
+import type { AppEntry, ClipboardEntry, VoiceTranscript } from "../../types";
+import { parseDictionaryInput } from "./parseDictionaryInput";
 
 const RESET_DELAY = 160;
 
@@ -21,7 +24,10 @@ export function usePalette() {
   const handledTranscript = useRef<VoiceTranscript | null>(null);
 
   const trimmedQuery = query.trim();
-  const isSingleWord = trimmedQuery.length > 0 && !/\s/.test(trimmedQuery);
+  const dictionaryTerm = parseDictionaryInput(trimmedQuery);
+  const isSingleWord =
+    dictionaryTerm !== null ||
+    (trimmedQuery.length > 0 && !/\s/.test(trimmedQuery));
 
   const { apps, resolvedQuery } = useAppSearch(query);
   const {
@@ -34,6 +40,17 @@ export function usePalette() {
 
   const assistant = useAssistant(showCount);
   const voice = useVoice();
+  const clipboard = useClipboard(
+    showCount,
+    isOpen && trimmedQuery.length === 0,
+  );
+  const {
+    listRef: clipboardListRef,
+    selectedIndex: clipboardSelectedIndex,
+    setSelectedIndex: setClipboardSelectedIndex,
+    moveSelection: moveClipboardSelection,
+    selected: clipboardSelected,
+  } = useClipboardList(clipboard.entries);
   const appsMatch =
     trimmedQuery.length > 0 &&
     resolvedQuery === trimmedQuery &&
@@ -52,9 +69,25 @@ export function usePalette() {
   const chatActive = hasChat || draftChat;
   const hasApps = !chatActive && appsMatch;
   const dictionaryEnabled = isSingleWord && !chatActive && !hasApps;
+  // Hide clipboard history as soon as a chat begins, including voice chats
+  // (recording/transcribing) that haven't produced a message yet.
+  const voiceBusy = voice.status !== "idle";
+  const clipboardActive =
+    isOpen &&
+    trimmedQuery.length === 0 &&
+    clipboard.loaded &&
+    !chatActive &&
+    !voiceBusy;
   const isExpanded =
-    hasApps || dictionaryEnabled || chatActive || Boolean(voice.error);
-  const dictionaryQuery = dictionaryEnabled ? trimmedQuery : "";
+    hasApps ||
+    dictionaryEnabled ||
+    chatActive ||
+    clipboardActive ||
+    voiceBusy ||
+    Boolean(voice.error);
+  const dictionaryQuery = dictionaryEnabled
+    ? (dictionaryTerm ?? trimmedQuery)
+    : "";
 
   const dismiss = () => {
     void voice.cancel();
@@ -113,7 +146,34 @@ export function usePalette() {
       });
   };
 
+  const pasteClipboardEntry = (entry: ClipboardEntry) => {
+    void clipboard.paste(entry.id).catch((error: unknown) => {
+      setLaunchError(
+        typeof error === "string"
+          ? error
+          : "Couldn't paste into the active input.",
+      );
+    });
+  };
+
+  const deleteClipboardEntry = (entry: ClipboardEntry) => {
+    void clipboard.remove(entry.id).catch((error: unknown) => {
+      setLaunchError(
+        typeof error === "string" ? error : "Couldn't delete the entry.",
+      );
+    });
+  };
+
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (
+      clipboardActive &&
+      (event.key === "ArrowDown" || event.key === "ArrowUp")
+    ) {
+      event.preventDefault();
+      moveClipboardSelection(event.key === "ArrowDown" ? 1 : -1);
+      return;
+    }
+
     if (hasApps && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
       event.preventDefault();
       moveSelection(event.key === "ArrowDown" ? 1 : -1);
@@ -132,6 +192,15 @@ export function usePalette() {
 
     if (event.key === "Enter") {
       event.preventDefault();
+
+      if (clipboardActive) {
+        if (clipboardSelected) {
+          pasteClipboardEntry(clipboardSelected);
+        } else {
+          dismiss();
+        }
+        return;
+      }
 
       if (voice.status === "recording") {
         void handleVoiceClick();
@@ -258,5 +327,12 @@ export function usePalette() {
     exitChat,
     voice,
     handleVoiceClick,
+    clipboard,
+    clipboardActive,
+    clipboardListRef,
+    clipboardSelectedIndex,
+    setClipboardSelectedIndex,
+    pasteClipboardEntry,
+    deleteClipboardEntry,
   };
 }

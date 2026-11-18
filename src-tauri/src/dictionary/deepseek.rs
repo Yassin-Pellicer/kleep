@@ -21,12 +21,13 @@ static CLIENT: LazyLock<Client> = LazyLock::new(|| {
 
 fn system_prompt() -> String {
     format!(
-        "You are a multilingual dictionary. The user supplies exactly one word in an unknown \
-         language. Detect the language of the word and call the `{TOOL_NAME}` tool exactly once.\n\n\
+        "You are a multilingual dictionary. The user supplies a word or short phrase in an \
+         unknown language. Detect the language of the input and call the `{TOOL_NAME}` tool \
+         exactly once.\n\n\
          Keep `word` in the original script and spelling exactly as the user typed it. Provide \
          the pronunciation as IPA.\n\n\
          Write `partOfSpeech`, `definition`, `example`, and `origin` in {NATIVE_LANGUAGE}. If the \
-         word is not {NATIVE_LANGUAGE}, translate the example sentence into {NATIVE_LANGUAGE}. A \
+         input is not {NATIVE_LANGUAGE}, translate the example sentence into {NATIVE_LANGUAGE}. A \
          definition must be at most two sentences and an example at most one sentence. Provide \
          exactly three English synonyms or translations as a JSON array of strings, for example \
          [\"hello\", \"hi\", \"greetings\"]. Always return a definition; do not refuse or ask \
@@ -48,7 +49,7 @@ fn request_body(word: &str) -> serde_json::Value {
             "type": "function",
             "function": {
                 "name": TOOL_NAME,
-                "description": "Return exactly one dictionary entry for the user's word.",
+                "description": "Return exactly one dictionary entry for the user's word or phrase.",
                 "strict": true,
                 "parameters": {
                     "type": "object",
@@ -65,7 +66,7 @@ fn request_body(word: &str) -> serde_json::Value {
                     "properties": {
                         "word": {
                             "type": "string",
-                            "description": "The word in its original script and spelling."
+                            "description": "The word or phrase in its original script and spelling."
                         },
                         "pronunciation": {
                             "type": "string",

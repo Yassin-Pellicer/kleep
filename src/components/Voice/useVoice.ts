@@ -11,6 +11,7 @@ import {
 
 export function useVoice() {
   const [status, setStatus] = useState<VoiceStatus>("idle");
+  const [level, setLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [autoTranscript, setAutoTranscript] =
     useState<VoiceTranscript | null>(null);
@@ -22,6 +23,7 @@ export function useVoice() {
     if (pollTimer.current !== null) {
       window.clearInterval(pollTimer.current);
       pollTimer.current = null;
+      setLevel(0);
     }
   };
 
@@ -71,6 +73,8 @@ export function useVoice() {
             return;
           }
 
+          setLevel(Number.isFinite(state.level) ? state.level : 0);
+
           if (state.autoStop) {
             await finishAutomatically(id);
           }
@@ -84,7 +88,7 @@ export function useVoice() {
           inFlight = false;
         }
       })();
-    }, 150);
+    }, 40);
   };
 
   const start = async () => {
@@ -95,6 +99,7 @@ export function useVoice() {
     sessionId.current = id;
     setError(null);
     setAutoTranscript(null);
+    setLevel(0);
     setStatus("starting");
 
     try {
@@ -177,6 +182,7 @@ export function useVoice() {
 
   return {
     status,
+    level,
     error,
     setError,
     autoTranscript,

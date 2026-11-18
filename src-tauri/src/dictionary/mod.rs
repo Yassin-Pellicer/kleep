@@ -12,9 +12,9 @@ static CACHE: LazyLock<Mutex<HashMap<String, DictionaryEntry>>> =
 pub async fn lookup_word(word: String) -> Result<DictionaryEntry, LookupError> {
     let word = word.trim().to_string();
 
-    if word.is_empty() || word.split_whitespace().count() != 1 {
+    if word.is_empty() || word.chars().count() > 200 {
         return Err(LookupError::InvalidInput(
-            "expected exactly one word".to_string(),
+            "expected a word or short phrase".to_string(),
         ));
     }
 

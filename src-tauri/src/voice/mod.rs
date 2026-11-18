@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use crate::structs::{VoiceRecordingStatus, VoiceTranscript};
 
 const PORT: u16 = 8765;
+const PROTOCOL_VERSION: u64 = 2;
 const START_TIMEOUT: Duration = Duration::from_secs(120);
 
 static SERVER: LazyLock<Mutex<Option<Child>>> = LazyLock::new(|| Mutex::new(None));
@@ -46,9 +47,41 @@ fn server_ready() -> bool {
     TcpStream::connect_timeout(&address, Duration::from_millis(200)).is_ok()
 }
 
+fn server_version() -> Option<u64> {
+    let address: SocketAddr = ([127, 0, 0, 1], PORT).into();
+    let mut stream = TcpStream::connect_timeout(&address, Duration::from_millis(500)).ok()?;
+    stream
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .ok()?;
+    stream
+        .write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+        .ok()?;
+
+    let mut response = String::new();
+    stream.read_to_string(&mut response).ok()?;
+    let body = response.split("\r\n\r\n").nth(1)?;
+    let value: Value = serde_json::from_str(body).ok()?;
+    value.get("version").and_then(Value::as_u64)
+}
+
 fn ensure_server() -> Result<(), String> {
     if server_ready() {
-        return Ok(());
+        if server_version() == Some(PROTOCOL_VERSION) {
+            return Ok(());
+        }
+
+        // Replace a service left over from an older build.
+        request_shutdown();
+        for _ in 0..50 {
+            if !server_ready() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+
+        if server_ready() {
+            return Err("the old voice service did not stop".to_string());
+        }
     }
 
     let directory = voice_dir().ok_or_else(|| "voice service files not found".to_string())?;
@@ -201,6 +234,7 @@ pub async fn voice_recording_status() -> Result<VoiceRecordingStatus, String> {
             auto_stop: false,
             speech: false,
             silence: 0.0,
+            level: 0.0,
         });
     }
 

@@ -1,7 +1,9 @@
 import { AppList } from "../AppList/AppList";
 import { Chat } from "../Chat/Chat";
+import { ClipboardList } from "../Clipboard/ClipboardList";
 import { Dictionary } from "../Dictionary/Dictionary";
 import { VoiceButton } from "../Voice/VoiceButton";
+import { VoiceWaveform } from "../Voice/VoiceWaveform";
 import { usePalette } from "./usePalette";
 import "./Palette.css";
 
@@ -49,6 +51,13 @@ export function Palette() {
     exitChat,
     voice,
     handleVoiceClick,
+    clipboard,
+    clipboardActive,
+    clipboardListRef,
+    clipboardSelectedIndex,
+    setClipboardSelectedIndex,
+    pasteClipboardEntry,
+    deleteClipboardEntry,
   } = usePalette();
 
   return (
@@ -61,19 +70,30 @@ export function Palette() {
       >
         <div className="palette__bar">
           <SearchIcon />
-          <input
-            ref={inputRef}
-            className="palette__input"
-            type="text"
-            value={query}
-            onChange={(event) => setQuery(event.currentTarget.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={chatActive ? "Ask anything…" : "Type to search…"}
-            autoFocus
-            autoComplete="off"
-            autoCorrect="off"
-            spellCheck={false}
-          />
+          <div className="palette__field">
+            <input
+              ref={inputRef}
+              className={`palette__input${
+                voice.status === "recording"
+                  ? " palette__input--recording"
+                  : ""
+              }`}
+              type="text"
+              value={query}
+              onChange={(event) => setQuery(event.currentTarget.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                voice.status === "recording" ? "" : "Type to search…"
+              }
+              autoFocus
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            {voice.status === "recording" && query.length === 0 && (
+              <VoiceWaveform level={voice.level} />
+            )}
+          </div>
           <VoiceButton
             status={voice.status}
             onClick={() => {
@@ -95,7 +115,16 @@ export function Palette() {
                 {launchError}
               </p>
             )}
-            {hasApps ? (
+            {clipboardActive ? (
+              <ClipboardList
+                entries={clipboard.entries}
+                listRef={clipboardListRef}
+                selectedIndex={clipboardSelectedIndex}
+                onSelectedIndexChange={setClipboardSelectedIndex}
+                onActivate={pasteClipboardEntry}
+                onDelete={deleteClipboardEntry}
+              />
+            ) : hasApps ? (
               <AppList
                 apps={apps}
                 listRef={listRef}

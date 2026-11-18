@@ -14,4 +14,5 @@ export type VoiceRecordingStatus = {
   autoStop: boolean;
   speech: boolean;
   silence: number;
+  level: number;
 };

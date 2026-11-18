@@ -2030,6 +2030,7 @@ dependencies = [
  "base64 0.22.1",
  "chrono",
  "dotenvy",
+ "libc",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2038,6 +2039,7 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-opener",
  "tauri-plugin-single-instance",
+ "x11rb",
 ]
 
 [[package]]

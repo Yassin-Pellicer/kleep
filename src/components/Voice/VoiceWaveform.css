@@ -1,0 +1,25 @@
+.voice-waveform {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 40px;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  align-items: center;
+  justify-items: center;
+  gap: 2px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.voice-waveform span {
+  width: 2px;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #fca5a5, #f87171);
+  transform: scaleY(0.04);
+  transform-origin: center;
+  will-change: transform;
+}

@@ -26,6 +26,7 @@ from pathlib import Path
 
 SAMPLE_RATE = 16000
 MAX_RECORD_SECONDS = 120
+PROTOCOL_VERSION = 2
 
 # Automatic end-of-speech detection. Recording keeps going until the caller
 # stops it, but once speech has been heard and the line stays quiet for
@@ -113,6 +114,7 @@ record_status = {
     "auto_stop": False,
     "speech": False,
     "silence": 0.0,
+    "level": 0.0,
 }
 
 
@@ -212,6 +214,7 @@ def _reset_record_status() -> None:
         record_status["auto_stop"] = False
         record_status["speech"] = False
         record_status["silence"] = 0.0
+        record_status["level"] = 0.0
 
 
 def _monitor_recording(path: str, stop_event: threading.Event) -> None:
@@ -244,6 +247,7 @@ def _monitor_recording(path: str, stop_event: threading.Event) -> None:
                     del buffer[:FRAME_BYTES]
 
                     rms = _frame_rms(frame)
+                    level = min(1.0, math.sqrt(rms / 5000.0))
                     elapsed += FRAME_SECONDS
                     speaking = rms >= max(MIN_SPEECH_RMS, noise_floor * 1.8)
 
@@ -267,6 +271,7 @@ def _monitor_recording(path: str, stop_event: threading.Event) -> None:
                     with record_status_lock:
                         record_status["speech"] = speaking
                         record_status["silence"] = silence
+                        record_status["level"] = level
                         if auto_stop:
                             record_status["auto_stop"] = True
 
@@ -287,6 +292,7 @@ def get_recording_status() -> dict:
             "autoStop": False,
             "speech": False,
             "silence": 0.0,
+            "level": 0.0,
         }
 
     with record_status_lock:
@@ -295,6 +301,7 @@ def get_recording_status() -> dict:
             "autoStop": record_status["auto_stop"],
             "speech": record_status["speech"],
             "silence": round(record_status["silence"], 3),
+            "level": round(record_status["level"], 3),
         }
 
 
@@ -444,7 +451,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path == "/health":
-            self._json(200, {"ok": True})
+            self._json(200, {"ok": True, "version": PROTOCOL_VERSION})
         else:
             self._json(404, {"error": "not found"})
 

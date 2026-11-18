@@ -1,0 +1,103 @@
+.clipboard-list {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 6px 8px 10px;
+  max-height: 340px;
+  overflow-y: auto;
+  border-top: 1px solid rgba(244, 244, 245, 0.08);
+  animation: clipboard-list-enter 140ms ease-out;
+  scrollbar-width: none;
+}
+
+.clipboard-list::-webkit-scrollbar {
+  display: none;
+}
+
+@keyframes clipboard-list-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.clipboard-list__item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.clipboard-list__item--selected {
+  background: rgba(165, 180, 252, 0.14);
+}
+
+.clipboard-list__text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: #f4f4f5;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clipboard-list__time {
+  flex: none;
+  color: rgba(244, 244, 245, 0.4);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.clipboard-list__delete {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(244, 244, 245, 0.5);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.clipboard-list__item:hover .clipboard-list__delete,
+.clipboard-list__item--selected .clipboard-list__delete,
+.clipboard-list__delete:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.clipboard-list__delete:hover {
+  background: rgba(244, 63, 94, 0.18);
+  color: #fda4af;
+}
+
+.clipboard-list--empty {
+  padding: 14px 18px;
+  color: rgba(244, 244, 245, 0.45);
+  font-size: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .clipboard-list {
+    animation: none;
+  }
+}
