@@ -1,0 +1,122 @@
+:root {
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  padding-top: 24px;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  user-select: none;
+}
+
+.palette-overlay {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.palette {
+  box-sizing: border-box;
+  width: 720px;
+  max-width: calc(100% - 24px);
+  border-radius: 16px;
+  background: rgba(24, 24, 27, 0.95);
+  color: #f4f4f5;
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(-6px) scale(0.985);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.palette--open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.palette__bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+  height: 48px;
+  padding: 0 18px;
+}
+
+.palette__results {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 100ms ease-out;
+}
+
+.palette--expanded .palette__results {
+  grid-template-rows: 1fr;
+}
+
+.palette__results-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.palette__launch-error,
+.palette__voice-error {
+  margin: 2px 0 0;
+  padding: 8px 18px 10px;
+  border-top: 1px solid rgba(244, 244, 245, 0.08);
+  color: #fda4af;
+  font-size: 13px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .palette {
+    transition: none;
+  }
+}
+
+.palette__icon {
+  flex: none;
+  opacity: 0.55;
+}
+
+.palette__input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  font: inherit;
+  font-size: 20px;
+  letter-spacing: 0.01em;
+  color: inherit;
+  caret-color: #a5b4fc;
+}
+
+.palette__input::placeholder {
+  color: rgba(244, 244, 245, 0.4);
+}
+
+.palette__hint {
+  flex: none;
+  font-family: inherit;
+  font-size: 18px;
+  line-height: 1;
+  color: rgba(244, 244, 245, 0.55);
+}
