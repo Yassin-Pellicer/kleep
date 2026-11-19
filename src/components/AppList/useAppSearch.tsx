@@ -1,19 +1,23 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { AppEntry, AppSearchStatus } from "../../types";
-import { searchApps } from "./apps";
+import { useRequestGuard } from "../../hooks/useRequestGuard";
 
 const DEBOUNCE_MS = 120;
+
+function searchApps(query: string): Promise<AppEntry[]> {
+  return invoke<AppEntry[]>("search_apps", { query });
+}
 
 export function useAppSearch(query: string) {
   const [apps, setApps] = useState<AppEntry[]>([]);
   const [status, setStatus] = useState<AppSearchStatus>("idle");
   const [resolvedQuery, setResolvedQuery] = useState("");
-  const requestId = useRef(0);
+  const guard = useRequestGuard();
 
   useEffect(() => {
     const trimmed = query.trim();
-    const id = requestId.current + 1;
-    requestId.current = id;
+    const id = guard.next();
 
     if (!trimmed) {
       setApps([]);
@@ -27,13 +31,13 @@ export function useAppSearch(query: string) {
     const timer = window.setTimeout(() => {
       searchApps(trimmed)
         .then((results) => {
-          if (requestId.current !== id) return;
+          if (!guard.isCurrent(id)) return;
           setApps(results);
           setResolvedQuery(trimmed);
           setStatus("ready");
         })
         .catch(() => {
-          if (requestId.current !== id) return;
+          if (!guard.isCurrent(id)) return;
           setApps([]);
           setResolvedQuery(trimmed);
           setStatus("ready");

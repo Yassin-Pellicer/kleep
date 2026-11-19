@@ -1,14 +1,12 @@
 #!/usr/bin/env python3
 """Local speech-to-text and text-to-speech service for Kleep.
 
-Uses faster-whisper (CUDA) for transcription and Chatterbox for speech
-synthesis. Audio is captured/played through PipeWire/PulseAudio command-line
-tools.
+Uses faster-whisper (CUDA) for transcription and Piper for speech synthesis.
+Audio is captured/played through PipeWire/PulseAudio command-line tools.
 """
 
 import array
 import ctypes
-import gc
 import glob
 import json
 import math
@@ -81,29 +79,9 @@ PIPER_DIR = BASE_DIR / "models" / "piper"
 PIPER_VOICE_EN = os.environ.get("KLEEP_TTS_PIPER_VOICE_EN", "en_US-lessac-medium")
 PIPER_VOICE_ES = os.environ.get("KLEEP_TTS_PIPER_VOICE_ES", "es_ES-davefx-medium")
 PIPER_SPEAKER_ES = int(os.environ.get("KLEEP_TTS_PIPER_SPEAKER_ES", "1"))
-CHATTERBOX_REFERENCES = {
-    "en": BASE_DIR / "models" / "chatterbox" / "en_reference.wav",
-    "es": BASE_DIR / "models" / "chatterbox" / "es_reference.wav",
-}
-_legacy_engine = os.environ.get("KLEEP_TTS_ENGINE")
-TTS_ENGINE_EN = (
-    os.environ.get("KLEEP_TTS_ENGINE_EN") or _legacy_engine or "piper"
-).lower()
-TTS_ENGINE_ES = (
-    os.environ.get("KLEEP_TTS_ENGINE_ES")
-    or _legacy_engine
-    or os.environ.get("KLEEP_TTS_SPANISH_ENGINE")
-    or "piper"
-).lower()
-TTS_ENGINES = {"en": TTS_ENGINE_EN, "es": TTS_ENGINE_ES}
 PIPER_LENGTH_SCALE = float(os.environ.get("KLEEP_TTS_PIPER_LENGTH_SCALE", "1.05"))
 SENTENCE_PAUSE_SECONDS = float(os.environ.get("KLEEP_TTS_SENTENCE_PAUSE", "0.3"))
 CLAUSE_PAUSE_SECONDS = float(os.environ.get("KLEEP_TTS_CLAUSE_PAUSE", "0.14"))
-# Unload Chatterbox after this many seconds without English speech so it stops
-# holding VRAM. Set to 0 to keep it loaded forever.
-CHATTERBOX_IDLE_SECONDS = float(
-    os.environ.get("KLEEP_CHATTERBOX_IDLE_SECONDS", "300")
-)
 
 print("loading Whisper large-v3-turbo on CUDA...", flush=True)
 try:
@@ -142,98 +120,12 @@ def _get_piper(code: str) -> PiperVoice:
     return piper_en
 
 
-chatterbox = None
-chatterbox_last_used = 0.0
-chatterbox_lock = threading.Lock()
-
-
-def _load_chatterbox():
-    """Load Chatterbox on GPU when possible, falling back to CPU."""
-    try:
-        import torch  # noqa: F401
-        from chatterbox.mtl_tts import (  # noqa: E402
-            ChatterboxMultilingualTTS,
-        )
-
-        for reference in CHATTERBOX_REFERENCES.values():
-            if not reference.is_file():
-                raise RuntimeError(
-                    f"missing reference audio {reference}; run voice/setup.sh"
-                )
-
-        requested = os.environ.get("KLEEP_CHATTERBOX_DEVICE", "auto").lower()
-        devices = (
-            ["cuda", "cpu"]
-            if requested == "auto"
-            else [requested]
-        )
-
-        for device in devices:
-            try:
-                print(f"loading Chatterbox multilingual on {device}...", flush=True)
-                model = ChatterboxMultilingualTTS.from_pretrained(device=device)
-                model.prepare_conditionals(str(CHATTERBOX_REFERENCES["en"]))
-                print(f"Chatterbox ready on {device}.", flush=True)
-                return model
-            except Exception as error:
-                print(
-                    f"Chatterbox failed on {device}: {error}",
-                    flush=True,
-                )
-    except Exception as error:
-        print(f"Chatterbox unavailable: {error}", flush=True)
-    return None
-
-
-def _get_chatterbox():
-    global chatterbox, chatterbox_last_used
-    with chatterbox_lock:
-        if chatterbox is None:
-            chatterbox = _load_chatterbox()
-        chatterbox_last_used = time.monotonic()
-        return chatterbox
-
-
-def _unload_chatterbox() -> None:
-    global chatterbox
-    with chatterbox_lock:
-        if chatterbox is None:
-            return
-        chatterbox = None
-    gc.collect()
-    try:
-        import torch
-    except ImportError:
-        return
-    if torch.cuda.is_available():
-        torch.cuda.empty_cache()
-    print("Chatterbox unloaded to free VRAM.", flush=True)
-
-
-def _chatterbox_reaper() -> None:
-    while True:
-        time.sleep(30)
-        if chatterbox is None or CHATTERBOX_IDLE_SECONDS <= 0:
-            continue
-        if time.monotonic() - chatterbox_last_used < CHATTERBOX_IDLE_SECONDS:
-            continue
-        # Only unload while no synthesis is running.
-        if not tts_lock.acquire(blocking=False):
-            continue
-        try:
-            _unload_chatterbox()
-        finally:
-            tts_lock.release()
-
-
 piper_en = None
 piper_es = None
-if TTS_ENGINES["en"] == "piper":
-    print(f"loading Piper English voice {PIPER_VOICE_EN}...", flush=True)
-    piper_en = load_piper_voice(PIPER_VOICE_EN)
-if TTS_ENGINES["es"] == "piper":
-    print(f"loading Piper Spanish voice {PIPER_VOICE_ES}...", flush=True)
-    piper_es = load_piper_voice(PIPER_VOICE_ES)
+print(f"loading Piper English voice {PIPER_VOICE_EN}...", flush=True)
+piper_en = load_piper_voice(PIPER_VOICE_EN)
+print(f"loading Piper Spanish voice {PIPER_VOICE_ES}...", flush=True)
+piper_es = load_piper_voice(PIPER_VOICE_ES)
 
 record_lock = threading.Lock()
 playback_lock = threading.Lock()
@@ -587,54 +479,34 @@ def speak(text: str, language: str) -> None:
         raise ValueError("no text to speak")
 
     with tts_lock:
-        engine = TTS_ENGINES[code]
-        chatterbox_voice = _get_chatterbox() if engine == "chatterbox" else None
-        if chatterbox_voice is not None:
-            chatterbox_voice.prepare_conditionals(
-                str(CHATTERBOX_REFERENCES[code])
-            )
-
         process: subprocess.Popen | None = None
         sample_rate = 24_000
 
         for index, (chunk, pause) in enumerate(chunks):
-            if chatterbox_voice is not None:
-                wav = chatterbox_voice.generate(
-                    chunk,
-                    language_id=code,
-                    exaggeration=0.5,
-                    cfg_weight=0.5,
-                )
-                sample_rate = chatterbox_voice.sr
-                audio = np.asarray(
-                    wav.squeeze(0).detach().cpu().numpy(),
-                    dtype=np.float32,
-                )
-            else:
-                piper = _get_piper(code)
-                speaker_id = None
-                if code == "es" and int(getattr(piper.config, "num_speakers", 1)) > 1:
-                    speaker_id = PIPER_SPEAKER_ES
-                    if speaker_id >= piper.config.num_speakers:
-                        speaker_id = 0
+            piper = _get_piper(code)
+            speaker_id = None
+            if code == "es" and int(getattr(piper.config, "num_speakers", 1)) > 1:
+                speaker_id = PIPER_SPEAKER_ES
+                if speaker_id >= piper.config.num_speakers:
+                    speaker_id = 0
 
-                parts: list[np.ndarray] = []
-                for audio_chunk in piper.synthesize(
-                    chunk,
-                    syn_config=SynthesisConfig(
-                        speaker_id=speaker_id,
-                        length_scale=PIPER_LENGTH_SCALE,
-                    ),
-                ):
-                    sample_rate = audio_chunk.sample_rate
-                    parts.append(
-                        np.asarray(
-                            audio_chunk.audio_float_array, dtype=np.float32
-                        )
+            parts: list[np.ndarray] = []
+            for audio_chunk in piper.synthesize(
+                chunk,
+                syn_config=SynthesisConfig(
+                    speaker_id=speaker_id,
+                    length_scale=PIPER_LENGTH_SCALE,
+                ),
+            ):
+                sample_rate = audio_chunk.sample_rate
+                parts.append(
+                    np.asarray(
+                        audio_chunk.audio_float_array, dtype=np.float32
                     )
-                if not parts:
-                    continue
-                audio = np.concatenate(parts)
+                )
+            if not parts:
+                continue
+            audio = np.concatenate(parts)
 
             if process is None:
                 process = _start_raw_player(sample_rate)
@@ -980,7 +852,6 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
     threading.Thread(target=watch_parent, daemon=True).start()
-    threading.Thread(target=_chatterbox_reaper, daemon=True).start()
 
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     server.daemon_threads = True

@@ -6,20 +6,14 @@ import type {
   AssistantStatus,
   ChatMessage,
 } from "../../types";
+import { errorMessages } from "../../lib/errorMessages";
 import { useChat } from "./useChat";
 import { rehypeFadeWords } from "./rehypeFadeWords";
 import "./Chat.css";
 
-const ERROR_MESSAGES: Record<AssistantError["kind"], string> = {
-  missingApiKey: "The assistant isn't configured.",
-  unauthorized: "The API key was rejected.",
-  rateLimited: "The assistant is busy. Try again in a moment.",
-  timeout: "The assistant took too long to respond.",
-  network: "No connection to the assistant.",
-  badResponse: "The assistant returned an unexpected response.",
-  server: "The assistant service hit an error.",
+const ERROR_MESSAGES = errorMessages("assistant", {
   invalidInput: "That prompt couldn't be sent.",
-};
+});
 
 type ChatProps = {
   messages: ChatMessage[];

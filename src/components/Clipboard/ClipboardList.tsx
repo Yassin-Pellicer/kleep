@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import type { ClipboardEntry } from "../../types";
+import { CheckIcon } from "../icons/CheckIcon";
+import { CopyIcon } from "../icons/CopyIcon";
+import { formatTime } from "../../lib/formatTime";
 import "./ClipboardList.css";
 
 type ClipboardListProps = {
@@ -10,61 +13,6 @@ type ClipboardListProps = {
   onCopy: (entry: ClipboardEntry) => Promise<void>;
   onDelete: (entry: ClipboardEntry) => void;
 };
-
-function CopyIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <rect x="9" y="9" width="11" height="11" rx="2" />
-      <path d="M5 15V5a2 2 0 0 1 2-2h10" />
-    </svg>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2.4"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      aria-hidden="true"
-    >
-      <path d="m5 12 4 4L19 6" />
-    </svg>
-  );
-}
-
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) return "";
-
-  const now = new Date();
-  if (date.toDateString() === now.toDateString()) {
-    return date.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  }
-
-  return date.toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-  });
-}
 
 export function ClipboardList({
   entries,

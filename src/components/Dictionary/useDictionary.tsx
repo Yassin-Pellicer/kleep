@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type {
   DictionaryEntry,
   DictionaryStatus,
   LookupError,
 } from "../../types";
-import { invoke } from "@tauri-apps/api/core";
+import { useRequestGuard } from "../../hooks/useRequestGuard";
+import { normalizeError } from "../../lib/normalizeError";
 
 const DEBOUNCE_MS = 450;
 
@@ -15,19 +17,6 @@ function lookupWord(word: string): Promise<DictionaryEntry> {
 // Entries never change for a given word, so keep them for the whole session.
 const CACHE = new Map<string, DictionaryEntry>();
 
-function normalizeError(error: unknown): LookupError {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "kind" in error &&
-    typeof (error as { kind: unknown }).kind === "string"
-  ) {
-    return error as LookupError;
-  }
-
-  return { kind: "network", message: String(error) };
-}
-
 export function useDictionary(
   query: string,
   enabled: boolean,
@@ -36,18 +25,18 @@ export function useDictionary(
   const [status, setStatus] = useState<DictionaryStatus>("idle");
   const [entry, setEntry] = useState<DictionaryEntry | null>(null);
   const [error, setError] = useState<LookupError | null>(null);
-  const requestId = useRef(0);
+  const guard = useRequestGuard();
+
   // A fresh palette session always starts blank.
   useEffect(() => {
-    requestId.current += 1;
+    guard.invalidate();
     setEntry(null);
     setError(null);
     setStatus("idle");
   }, [resetKey]);
 
   useEffect(() => {
-    const id = requestId.current + 1;
-    requestId.current = id;
+    const id = guard.next();
 
     if (!enabled || !query) {
       // Keep the previous entry mounted so the collapse animation has content
@@ -65,7 +54,7 @@ export function useDictionary(
       const cached = CACHE.get(key);
 
       if (cached) {
-        if (requestId.current === id) {
+        if (guard.isCurrent(id)) {
           setEntry(cached);
           setStatus("found");
         }
@@ -74,13 +63,13 @@ export function useDictionary(
 
       lookupWord(query)
         .then((result) => {
-          if (requestId.current !== id) return;
+          if (!guard.isCurrent(id)) return;
           CACHE.set(key, result);
           setEntry(result);
           setStatus("found");
         })
         .catch((lookupError: unknown) => {
-          if (requestId.current !== id) return;
+          if (!guard.isCurrent(id)) return;
           setError(normalizeError(lookupError));
           setStatus("error");
         });

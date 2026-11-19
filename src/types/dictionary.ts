@@ -1,3 +1,5 @@
+import type { ServiceError } from "./error";
+
 /// The entry shape returned by the `lookup_word` command.
 export type DictionaryEntry = {
   word: string;
@@ -9,19 +11,6 @@ export type DictionaryEntry = {
   synonyms: string[];
 };
 
-export type LookupErrorKind =
-  | "missingApiKey"
-  | "unauthorized"
-  | "rateLimited"
-  | "timeout"
-  | "network"
-  | "badResponse"
-  | "server"
-  | "invalidInput";
-
-export type LookupError = {
-  kind: LookupErrorKind;
-  message?: string;
-};
+export type LookupError = ServiceError;
 
 export type DictionaryStatus = "idle" | "loading" | "found" | "error";

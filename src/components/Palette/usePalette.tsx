@@ -2,17 +2,19 @@ import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { launchApp } from "../AppList/apps";
-import { useAppList } from "../AppList/useAppList";
 import { useAppSearch } from "../AppList/useAppSearch";
 import { useAssistant } from "../Chat/useAssistant";
 import { useClipboard } from "../Clipboard/useClipboard";
-import { useClipboardList } from "../Clipboard/useClipboardList";
 import { useVoice } from "../Voice/useVoice";
+import { useListNavigation } from "../../hooks/useListNavigation";
 import type { AppEntry, ClipboardEntry, VoiceTranscript } from "../../types";
 import { parseDictionaryInput } from "./parseDictionaryInput";
 
 const RESET_DELAY = 160;
+
+function launchApp(id: string): Promise<void> {
+  return invoke<void>("launch_app", { id });
+}
 
 export function usePalette() {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -34,8 +36,8 @@ export function usePalette() {
     listRef,
     selectedIndex,
     moveSelection,
-    selectedApp,
-  } = useAppList(apps);
+    selected: selectedApp,
+  } = useListNavigation(apps, 8);
 
   const assistant = useAssistant(showCount);
   const voice = useVoice();
@@ -48,7 +50,7 @@ export function usePalette() {
     selectedIndex: clipboardSelectedIndex,
     moveSelection: moveClipboardSelection,
     selected: clipboardSelected,
-  } = useClipboardList(clipboard.entries);
+  } = useListNavigation(clipboard.entries, 12);
   const appsMatch =
     trimmedQuery.length > 0 &&
     resolvedQuery === trimmedQuery &&

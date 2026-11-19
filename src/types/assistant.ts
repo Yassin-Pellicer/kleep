@@ -1,3 +1,5 @@
+import type { ServiceError } from "./error";
+
 export type ChatRole = "user" | "assistant";
 
 export type ChatMessage = {
@@ -17,19 +19,6 @@ export type AssistantReply = {
   sources: ChatSource[];
 };
 
-export type AssistantErrorKind =
-  | "missingApiKey"
-  | "unauthorized"
-  | "rateLimited"
-  | "timeout"
-  | "network"
-  | "badResponse"
-  | "server"
-  | "invalidInput";
-
-export type AssistantError = {
-  kind: AssistantErrorKind;
-  message?: string;
-};
+export type AssistantError = ServiceError;
 
 export type AssistantStatus = "idle" | "loading" | "error";

@@ -1,17 +1,11 @@
 import { useDictionary } from "./useDictionary";
-import type { DictionaryEntry, LookupError } from "../../types";
+import type { DictionaryEntry } from "../../types";
+import { errorMessages } from "../../lib/errorMessages";
 import "./Dictionary.css";
 
-const ERROR_MESSAGES: Record<LookupError["kind"], string> = {
-  missingApiKey: "The dictionary isn't configured.",
-  unauthorized: "The API key was rejected.",
-  rateLimited: "The dictionary is busy. Try again in a moment.",
-  timeout: "The dictionary took too long to respond.",
-  network: "No connection to the dictionary.",
-  badResponse: "The dictionary returned an unexpected response.",
-  server: "The dictionary service hit an error.",
+const ERROR_MESSAGES = errorMessages("dictionary", {
   invalidInput: "Type exactly one word to look it up.",
-};
+});
 
 type DictionaryProps = {
   query: string;
