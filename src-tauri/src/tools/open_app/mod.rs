@@ -14,8 +14,12 @@ pub(super) fn definition() -> Value {
                             the default browser. Use the url field for websites and online \
                             services such as YouTube, Gmail, GitHub, or any link; for \
                             example opening YouTube is { \"url\": \"https://youtube.com\" }. \
-                            Use the app field only for installed desktop applications. \
-                            Do not pass a website name in the app field.",
+                            For installed desktop applications pass a short plain name such \
+                            as \"chrome\", \"spotify\", or \"files\" in the app field; never \
+                            pass a sentence. The installed application list is provided in the \
+                            system context: prefer those exact names, including games such as \
+                            \"Chess\" or \"Mines\". If the result says no application matches, \
+                            retry once with one of the suggested names.",
             "strict": true,
             "parameters": {
                 "type": "object",
@@ -36,7 +40,7 @@ pub(super) fn definition() -> Value {
     })
 }
 
-pub(super) async fn execute(arguments: &str, _context: &mut ToolContext<'_>) -> ToolOutcome {
+pub(super) async fn execute(arguments: &str, context: &mut ToolContext<'_>) -> ToolOutcome {
     let args: args::OpenAppArgs = match serde_json::from_str(arguments) {
         Ok(args) => args,
         Err(_) => return ToolOutcome::text("Invalid arguments for open_app."),
@@ -55,9 +59,12 @@ pub(super) async fn execute(arguments: &str, _context: &mut ToolContext<'_>) -> 
         Some(app) if !app.is_empty() => app.to_string(),
         _ => return ToolOutcome::text("Provide either an app name or a URL."),
     };
+    let request = context.request.clone();
 
-    match tauri::async_runtime::spawn_blocking(move || crate::services::apps::launch_by_name(&app))
-        .await
+    match tauri::async_runtime::spawn_blocking(move || {
+        crate::services::apps::launch_by_name(&app, &request)
+    })
+    .await
     {
         Ok(Ok(name)) => ToolOutcome::opened(format!("Opened {name}.")),
         Ok(Err(error)) => ToolOutcome::text(error),

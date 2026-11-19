@@ -8,13 +8,41 @@ mod services;
 mod tools;
 
 use app::shortcuts::{is_wayland, register_shortcuts};
-use app::window::{fit_to_screen, main_window, show_palette, toggle_palette};
+use app::window::{fit_to_screen, main_window, show_palette_on_launch, toggle_palette};
+
+const HELP: &str = "\
+Kleep - keyboard-first desktop palette
+
+Usage:
+  kleep              Show the palette
+  kleep --toggle     Toggle the palette
+  kleep --hidden     Start in the background without showing
+  kleep --version    Print the version
+  kleep --help       Show this help
+";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Loads DEEPSEEK_API_KEY from a .env file during development. The key is
-    // only ever read by the Rust side and never exposed to the webview.
-    let _ = dotenvy::dotenv();
+    let arguments: Vec<String> = std::env::args().skip(1).collect();
+
+    if arguments
+        .iter()
+        .any(|arg| arg == "--version" || arg == "-V")
+    {
+        println!("kleep {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
+
+    if arguments.iter().any(|arg| arg == "--help" || arg == "-h") {
+        print!("{HELP}");
+        return;
+    }
+
+    let start_hidden = arguments.iter().any(|arg| arg == "--hidden");
+
+    // Loads DEEPSEEK_API_KEY from .env files. The key is only ever read by the
+    // Rust side and never exposed to the webview.
+    services::support::env::load_dotenv();
 
     // Restore the GNOME overlay key if a previous run was killed while open.
     app::gnome::recover_overlay_key();
@@ -24,8 +52,10 @@ pub fn run() {
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
             if argv.iter().any(|arg| arg == "--toggle") {
                 toggle_palette(app);
-            } else if let Some(window) = main_window(app) {
-                show_palette(&window);
+            } else if !argv.iter().any(|arg| arg == "--hidden")
+                && let Some(window) = main_window(app)
+            {
+                show_palette_on_launch(&window);
             }
         }))
         .plugin(tauri_plugin_opener::init())
@@ -50,13 +80,14 @@ pub fn run() {
             commands::clipboard::clipboard_clear,
             commands::clipboard::clipboard_paste,
             commands::voice::voice_start_recording,
+            commands::voice::voice_setup_status,
             commands::voice::voice_recording_status,
             commands::voice::voice_stop_recording,
             commands::voice::voice_cancel_recording,
             commands::voice::voice_speak,
             commands::voice::voice_stop_speaking
         ])
-        .setup(|app| {
+        .setup(move |app| {
             std::thread::spawn(services::apps::preload);
             services::clipboard::start();
             // Create the paste device ahead of time so the first Enter press
@@ -80,10 +111,10 @@ pub fn run() {
                 register_shortcuts(app.handle());
             }
 
-            if std::env::args().skip(1).any(|arg| arg == "--toggle")
-                && let Some(window) = main_window(app.handle())
-            {
-                show_palette(&window);
+            // A normal launch shows the palette; `--hidden` keeps it in the
+            // background for autostart entries.
+            if !start_hidden && let Some(window) = main_window(app.handle()) {
+                show_palette_on_launch(&window);
             }
             Ok(())
         })

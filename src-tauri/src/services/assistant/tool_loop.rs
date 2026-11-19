@@ -3,18 +3,54 @@ use std::collections::HashMap;
 use serde_json::{Value, json};
 
 use crate::models::{AssistantReply, ServiceError};
+use crate::services::support::text::truncate_chars;
 use crate::tools::{self, ToolContext, ToolOutcome};
 
-use super::provider::{self, ModelConfig};
+use super::provider::{self, AssistantMessage, ModelConfig};
 
 const MAX_TOOL_ROUNDS: usize = 3;
 const MAX_TOOL_ROUNDS_LOCAL: usize = 6;
 
-fn reply(content: String, context: ToolContext<'_>) -> AssistantReply {
+fn log_model_message(message: &AssistantMessage) {
+    if let Some(content) = message
+        .content
+        .as_deref()
+        .map(str::trim)
+        .filter(|content| !content.is_empty())
+    {
+        eprintln!(
+            "kleep assistant: model text: {}",
+            truncate_chars(content, 2000)
+        );
+    }
+
+    for call in &message.tool_calls {
+        eprintln!(
+            "kleep assistant: model tool call {} {}",
+            call.function.name,
+            truncate_chars(&call.function.arguments, 500)
+        );
+    }
+}
+
+fn reply(content: String, opened: bool, context: ToolContext<'_>) -> AssistantReply {
     AssistantReply {
         content,
         sources: context.sources,
+        opened,
     }
+}
+
+/// The latest user message, used to check that a tool action matches what the
+/// user actually asked for.
+fn last_user_message(conversation: &[Value]) -> String {
+    conversation
+        .iter()
+        .rev()
+        .find(|message| message.get("role").and_then(Value::as_str) == Some("user"))
+        .and_then(|message| message.get("content").and_then(Value::as_str))
+        .unwrap_or_default()
+        .to_string()
 }
 
 pub async fn run(
@@ -24,7 +60,12 @@ pub async fn run(
     web_search: bool,
     search_key: Option<&str>,
 ) -> Result<AssistantReply, ServiceError> {
-    let mut context = ToolContext::new(search_key, config.local);
+    let request = last_user_message(&conversation);
+    let mut context = ToolContext::new(search_key, config.local, request.clone());
+    eprintln!(
+        "kleep assistant: request: {}",
+        truncate_chars(&request, 500)
+    );
     let mut seen_calls: HashMap<String, String> = HashMap::new();
     let max_tool_rounds = if config.local {
         MAX_TOOL_ROUNDS_LOCAL
@@ -48,6 +89,7 @@ pub async fn run(
         let message =
             provider::complete(config, &conversation, &tool_definitions, voice, allow_tools)
                 .await?;
+        log_model_message(&message);
 
         if message.tool_calls.is_empty() {
             let content = message.content.unwrap_or_default().trim().to_string();
@@ -57,7 +99,8 @@ pub async fn run(
                 ));
             }
 
-            return Ok(reply(content, context));
+            eprintln!("kleep assistant: reply: {content}");
+            return Ok(reply(content, false, context));
         }
 
         if !allow_tools {
@@ -69,7 +112,8 @@ pub async fn run(
             } else {
                 content
             };
-            return Ok(reply(content, context));
+            eprintln!("kleep assistant: reply: {content}");
+            return Ok(reply(content, false, context));
         }
 
         tool_round += 1;
@@ -86,6 +130,10 @@ pub async fn run(
                 Err(_) => format!("{}\u{0}{}", call.function.name, call.function.arguments),
             };
             if let Some(previous) = seen_calls.get(&cache_key) {
+                eprintln!(
+                    "kleep assistant: reusing earlier result for {}",
+                    call.function.name
+                );
                 conversation.push(json!({
                     "role": "tool",
                     "tool_call_id": call.id,
@@ -100,6 +148,13 @@ pub async fn run(
             let outcome: ToolOutcome =
                 tools::execute(&call.function.name, &call.function.arguments, &mut context).await;
 
+            eprintln!(
+                "kleep assistant: tool result {} ({}) : {}",
+                call.function.name,
+                if outcome.opened { "action" } else { "data" },
+                truncate_chars(&outcome.content, 1000)
+            );
+
             seen_calls.insert(cache_key, outcome.content.clone());
             opened_app |= outcome.opened;
 
@@ -113,7 +168,8 @@ pub async fn run(
         // Opening an app or link is a complete action on its own; don't ask
         // the model for a spoken/visible confirmation.
         if opened_app {
-            return Ok(reply(String::new(), context));
+            eprintln!("kleep assistant: action completed; closing the palette");
+            return Ok(reply(String::new(), true, context));
         }
     }
 }

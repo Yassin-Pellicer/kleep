@@ -1,9 +1,14 @@
-use crate::models::{VoiceRecordingStatus, VoiceTranscript};
+use crate::models::{VoiceRecordingStatus, VoiceSetupStatus, VoiceTranscript};
 use crate::services::voice;
 
 #[tauri::command]
 pub async fn voice_start_recording() -> Result<(), String> {
     voice::start_recording().await
+}
+
+#[tauri::command]
+pub fn voice_setup_status() -> VoiceSetupStatus {
+    voice::setup_status()
 }
 
 #[tauri::command]

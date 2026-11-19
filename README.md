@@ -1,31 +1,91 @@
 # Kleep
 
-A keyboard-first desktop palette: launch applications, browse clipboard history,
-look up words, and chat with a local or hosted assistant.
+A keyboard-first desktop palette for Linux. Launch applications, browse
+clipboard history, look up words, and chat with a local or hosted assistant.
 
-## Dictionary setup
+Kleep is a small always-on-top palette. Press the shortcut, type, and act.
 
-Lookups are powered by the DeepSeek API from the Rust backend. The key is never
-exposed to the webview.
+## Download and install
 
-1. Copy `.env.example` to `.env`.
-2. Set `DEEPSEEK_API_KEY` to a key from <https://platform.deepseek.com/>.
-3. Run the app normally (`npm run tauri dev`).
+Download the artifact for your distribution from the project's Releases page.
 
-Without a key the palette shows a configuration error in the results area.
+### Debian / Ubuntu / Linux Mint
 
-## Assistant model
+```bash
+sudo apt install ./kleep_0.1.0_amd64.deb
+```
 
-Assistant chat uses DeepSeek by default. To run it on a local Ollama model
-instead, add these to `.env`:
+Then launch **Kleep** from your application menu or run `kleep` in a terminal.
+
+### Fedora / RHEL
+
+```bash
+sudo dnf install ./kleep-0.1.0-1.x86_64.rpm
+```
+
+Then launch **Kleep** from your application menu or run `kleep`.
+
+### AppImage (any distribution)
+
+```bash
+chmod +x kleep_0.1.0_amd64.AppImage
+./kleep_0.1.0_amd64.AppImage
+```
+
+If your system does not have FUSE installed, run it with:
+
+```bash
+./kleep_0.1.0_amd64.AppImage --appimage-extract-and-run
+```
+
+## First run
+
+- A normal launch opens the palette immediately.
+- Press `Esc` or click outside the palette to hide it.
+- On X11, while Kleep is running, `Alt+Space` toggles the palette
+  (`Alt+Shift+Space` is used if that combination is unavailable).
+- On Wayland, compositors do not allow the built-in global shortcut. Bind your
+  own desktop shortcut to `kleep --toggle` (or the full AppImage path).
+- `kleep --version` prints the version, and `kleep --help` lists the flags.
+- To start Kleep in the background on login, use `kleep --hidden`.
+
+Example autostart entry (`~/.config/autostart/kleep.desktop`):
+
+```ini
+[Desktop Entry]
+Type=Application
+Name=Kleep
+Exec=kleep --hidden
+X-GNOME-Autostart-enabled=true
+```
+
+## Configure the assistant and dictionary
+
+The assistant and dictionary need a DeepSeek API key. The key is read only by
+the Rust backend and is never exposed to the webview.
+
+Create `~/.config/kleep/.env`:
+
+```bash
+mkdir -p ~/.config/kleep
+cat > ~/.config/kleep/.env <<'EOF'
+DEEPSEEK_API_KEY=your-key-here
+EOF
+```
+
+Get a key at <https://platform.deepseek.com/>.
+
+You can also export `DEEPSEEK_API_KEY` in the environment. Environment variables
+already set take precedence over `.env` files.
+
+To use a local Ollama model for chat instead, add:
 
 ```bash
 KLEEP_ASSISTANT_PROVIDER=ollama
 KLEEP_OLLAMA_MODEL=qwen3.5:9b
 # Optional, defaults to http://127.0.0.1:11434
 KLEEP_OLLAMA_URL=http://127.0.0.1:11434
-# Optional, defaults to 16384. Ollama's own default for many models is 4096,
-# which is too small once the prompt, tools and command output share the window.
+# Optional, defaults to 16384.
 KLEEP_OLLAMA_NUM_CTX=16384
 ```
 
@@ -34,47 +94,160 @@ search when present; without it the local model keeps app launching and shell
 command tools but loses `web_search`.
 
 Kleep warms the local model in the background at startup and keeps it loaded
-for 30 minutes after each request, so the first prompt does not wait for a cold
-model load.
+for 30 minutes after each request.
 
-## Local voice input and read-aloud
+Set `KLEEP_DEEPSEEK_MODEL` for the hosted chat model and
+`KLEEP_DICTIONARY_MODEL` for the dictionary (both default to `deepseek-flash`).
+Voice models can be chosen with `KLEEP_WHISPER_MODEL`,
+`KLEEP_TTS_PIPER_VOICE_EN`, and `KLEEP_TTS_PIPER_VOICE_ES`. The `install.sh`
+script writes these settings to `~/.config/kleep/.env`; it never downloads the
+models themselves.
 
-Kleep uses a local Python service for speech:
+## Voice input and read-aloud setup
 
-- **STT:** faster-whisper `large-v3-turbo` on CUDA
-- **TTS:** Piper on CPU for both languages: `es_ES-davefx-medium` (Castilian)
-  and `en_US-lessac-medium`. Both voices run on CPU, so only Whisper uses VRAM
-  (~1.2 GB).
-- **Audio:** PipeWire/PulseAudio `parec` and `paplay`
+Voice is provided by a local Python service. On first launch Kleep writes it to:
 
-First-time setup:
-
-```bash
-cd voice
-./setup.sh
+```
+~/.local/share/kleep/voice/
+├── server.py
+├── setup.sh
+├── requirements.txt
+├── .venv/          (created by the first-run setup)
+└── models/         (downloaded by the first-run setup)
 ```
 
-Requires Python 3, an NVIDIA GPU with CUDA support, and PipeWire or PulseAudio. The first run downloads the Whisper model and the Piper voices. The service starts automatically with the app and loads models in the background; check `voice/voice.log` if it fails.
+The setup runs automatically the first time you use voice (microphone or
+read-aloud); the palette shows a notice while it works. It creates a virtual
+environment and downloads the Whisper (`large-v3-turbo`) and Piper voice
+models, so it can take several minutes and a few GB on the first run.
 
-Click the microphone button in the palette to start recording. Recording stops automatically after you pause for about a second (or click again to stop right away), then the transcript is sent to the assistant. If no speech is detected at all it gives up after about 12 seconds. Replies to voice prompts are read aloud; typed prompts stay silent.
+To disable automatic setup and run it yourself:
 
-The detection thresholds can be tuned with environment variables when starting the voice service: `KLEEP_AUTO_STOP_SILENCE` (pause in seconds), `KLEEP_NO_SPEECH_TIMEOUT` (seconds to wait for speech) and `KLEEP_SPEECH_RMS` (loudness floor).
+```bash
+export KLEEP_VOICE_AUTO_SETUP=0
+~/.local/share/kleep/voice/setup.sh
+```
 
-Text-to-speech can be tuned too:
+You need:
 
-- `KLEEP_TTS_PIPER_VOICE_ES` — Castilian Piper voice
-  (default `es_ES-davefx-medium`).
-- `KLEEP_TTS_PIPER_VOICE_EN` — English Piper voice
-  (default `en_US-lessac-medium`).
-- `KLEEP_TTS_PIPER_SPEAKER_ES` — speaker id for multi-speaker Piper voices
-  (default `1`; ignored by single-speaker voices).
-- `KLEEP_TTS_PIPER_LENGTH_SCALE`, `KLEEP_TTS_SENTENCE_PAUSE` and
-  `KLEEP_TTS_CLAUSE_PAUSE` — speaking speed and pause lengths.
+- Python 3 with `venv` and `pip`
+  - Debian/Ubuntu: `sudo apt install python3 python3-venv python3-pip`
+  - Fedora: `sudo dnf install python3 python3-pip`
+- PipeWire or PulseAudio tools: `parec` and `paplay`
+  - Debian/Ubuntu: `sudo apt install pulseaudio-utils`
+  - Fedora: `sudo dnf install pulseaudio-utils`
+- Optional: an NVIDIA GPU with CUDA. Without one, transcription runs on CPU
+  (slower).
 
-Spanish replies are normalized before synthesis, so dates, clock times,
-decimal points, ordinals and phone numbers are read as Castilian Spanish
-instead of digit-by-digit.
+An NVIDIA GPU is not required. The CUDA libraries are installed by the setup
+script, and the service falls back to CPU if CUDA is unavailable.
 
-## Recommended IDE Setup
+Set `KLEEP_VOICE_DIR` to use a different voice directory.
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+If voice setup fails, check `~/.local/share/kleep/voice/voice.log`. Kleep still
+works for app launching, clipboard history, and text chat without voice.
+
+## Clipboard
+
+Kleep polls the X11 clipboard through XWayland, so it works on both X11 and
+Wayland desktops.
+
+- Copying an entry uses `wl-copy` (from `wl-clipboard`) or `xclip`.
+  Install one of them:
+  - Debian/Ubuntu: `sudo apt install wl-clipboard` (or `xclip`)
+  - Fedora: `sudo dnf install wl-clipboard` (or `xclip`)
+- Direct paste into the previously focused window (press `Enter` on a clipboard
+  entry) uses a virtual keyboard through `/dev/uinput`.
+- If direct paste is unavailable, copying still works.
+
+To allow direct paste for your user, add a udev rule and join the `input` group:
+
+```bash
+echo 'KERNEL=="uinput", GROUP="input", MODE="0660", OPTIONS+="static_node=uinput"' \
+  | sudo tee /etc/udev/rules.d/99-kleep-uinput.rules
+sudo modprobe uinput
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+sudo usermod -aG input "$USER"
+```
+
+Log out and back in for the group change to take effect.
+
+## What it does
+
+- **Apps:** search installed desktop applications and launch them.
+- **Clipboard:** browse recent clipboard text, copy an entry, delete entries, or
+  paste directly into the focused window.
+- **Dictionary:** look up a word or quoted phrase; results come from DeepSeek.
+- **Chat:** type a multi-word prompt to talk to the assistant. It can open apps
+  and links, run shell commands, and search the web.
+- **Voice:** press the microphone, speak, and the transcript is sent to the
+  assistant. Replies to voice prompts are read aloud.
+
+Spanish replies use Peninsular Spanish. Dates, times, decimals, ordinals, and
+phone numbers are normalized before speech.
+
+## Troubleshooting
+
+- **Nothing appears after launch:** run `kleep` from a terminal to see errors.
+  If you started it with `--hidden`, use your toggle shortcut.
+- **`invalid response` or missing key errors:** check
+  `~/.config/kleep/.env` and make sure `DEEPSEEK_API_KEY` is set.
+- **Voice button fails:** the first use installs the voice service
+  automatically; check `~/.local/share/kleep/voice/voice.log`. If you disabled
+  auto-setup (`KLEEP_VOICE_AUTO_SETUP=0`), run
+  `~/.local/share/kleep/voice/setup.sh` manually.
+- **Direct paste fails:** the `wl-copy`/`xclip` copy still works; see the
+  `/dev/uinput` instructions above.
+- **Wayland shortcut does nothing:** bind a desktop shortcut to
+  `kleep --toggle`; the built-in global shortcut is X11-only.
+
+## Build from source
+
+### One-shot install
+
+```bash
+./install.sh
+```
+
+This installs the build and runtime packages, builds the release binary,
+installs it under `~/.local` (override with `--prefix DIR`), adds desktop and
+autostart entries, and writes `~/.config/kleep/.env`. It never downloads
+models: choose them in the config file and pull them yourself. Use
+`./install.sh --help` for the available flags.
+
+### Prerequisites
+
+- Node.js 20 or newer
+- Rust stable
+- Tauri Linux dependencies (WebKitGTK 4.1, GTK 3, etc.)
+- Python 3 with `venv` for voice
+- `libfuse2` only if you want to run the generated AppImage locally
+
+### Build
+
+```bash
+npm ci
+npm run tauri build
+```
+
+Artifacts are written to `src-tauri/target/release/bundle/`:
+
+- `deb/kleep_0.1.0_amd64.deb`
+- `rpm/kleep-0.1.0-1.x86_64.rpm`
+- `appimage/kleep_0.1.0_amd64.AppImage`
+
+Use `npm run tauri build -- --bundles deb,appimage` to build a subset.
+
+### Develop
+
+```bash
+npm install
+npm run tauri dev
+```
+
+For development, create a `.env` in the repository root (copy `.env.example`).
+The repository `voice/` directory is used directly in development; run
+`cd voice && ./setup.sh` once to set it up.
+
+See `docs/RELEASING.md` for the release checklist.

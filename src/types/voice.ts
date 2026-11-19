@@ -16,3 +16,10 @@ export type VoiceRecordingStatus = {
   silence: number;
   level: number;
 };
+
+export type VoiceSetupState = "idle" | "preparing" | "ready" | "failed";
+
+export type VoiceSetupStatus = {
+  state: VoiceSetupState;
+  message: string;
+};

@@ -1,4 +1,5 @@
 mod client;
+mod embedded;
 mod supervisor;
 
 use serde_json::json;
@@ -8,7 +9,7 @@ use crate::models::{VoiceRecordingStatus, VoiceTranscript};
 const PORT: u16 = 8765;
 const PROTOCOL_VERSION: u64 = 16;
 
-pub use supervisor::{preload, shutdown};
+pub use supervisor::{preload, setup_status, shutdown};
 
 async fn ensure_ready() -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(supervisor::ensure_server)

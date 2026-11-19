@@ -117,6 +117,10 @@ export function usePalette() {
     setQuery("");
     const reply = await assistant.send(text, { voice: true });
     requestAnimationFrame(() => inputRef.current?.focus());
+    if (reply?.opened) {
+      dismiss();
+      return;
+    }
     if (reply?.content.trim()) {
       await voice.speak(reply.content, transcript.language);
     }
@@ -224,7 +228,11 @@ export function usePalette() {
 
         if (trimmedQuery.length > 0) {
           void voice.stopSpeaking();
-          void assistant.send(trimmedQuery);
+          void assistant.send(trimmedQuery).then((reply) => {
+            if (reply?.opened) {
+              dismiss();
+            }
+          });
           setQuery("");
         }
         return;

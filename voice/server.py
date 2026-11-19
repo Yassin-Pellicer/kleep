@@ -76,6 +76,7 @@ from piper.download_voices import download_voice  # noqa: E402
 PORT = int(os.environ.get("KLEEP_VOICE_PORT", "8765"))
 BASE_DIR = Path(__file__).resolve().parent
 PIPER_DIR = BASE_DIR / "models" / "piper"
+WHISPER_MODEL = os.environ.get("KLEEP_WHISPER_MODEL", "large-v3-turbo")
 PIPER_VOICE_EN = os.environ.get("KLEEP_TTS_PIPER_VOICE_EN", "en_US-lessac-medium")
 PIPER_VOICE_ES = os.environ.get("KLEEP_TTS_PIPER_VOICE_ES", "es_ES-davefx-medium")
 PIPER_SPEAKER_ES = int(os.environ.get("KLEEP_TTS_PIPER_SPEAKER_ES", "1"))
@@ -83,17 +84,17 @@ PIPER_LENGTH_SCALE = float(os.environ.get("KLEEP_TTS_PIPER_LENGTH_SCALE", "1.05"
 SENTENCE_PAUSE_SECONDS = float(os.environ.get("KLEEP_TTS_SENTENCE_PAUSE", "0.3"))
 CLAUSE_PAUSE_SECONDS = float(os.environ.get("KLEEP_TTS_CLAUSE_PAUSE", "0.14"))
 
-print("loading Whisper large-v3-turbo on CUDA...", flush=True)
+print(f"loading Whisper {WHISPER_MODEL} on CUDA...", flush=True)
 try:
     whisper = WhisperModel(
-        "large-v3-turbo",
+        WHISPER_MODEL,
         device="cuda",
         compute_type="int8_float16",
     )
 except Exception as error:
     print(f"CUDA load failed, falling back to CPU: {error}", flush=True)
     whisper = WhisperModel(
-        "large-v3-turbo",
+        WHISPER_MODEL,
         device="cpu",
         compute_type="int8",
     )

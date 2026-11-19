@@ -2,6 +2,7 @@
   "name": "kleep",
   "private": true,
   "version": "0.1.0",
+  "description": "Keyboard-first desktop palette for Linux",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -17,6 +17,7 @@ export type ChatSource = {
 export type AssistantReply = {
   content: string;
   sources: ChatSource[];
+  opened: boolean;
 };
 
 export type AssistantError = ServiceError;

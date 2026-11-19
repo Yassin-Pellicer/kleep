@@ -1,8 +1,16 @@
 use serde_json::json;
 
-pub(super) const MODEL: &str = "deepseek-flash";
+const DEFAULT_MODEL: &str = "deepseek-flash";
 pub(super) const TOOL_NAME: &str = "return_dictionary_entry";
 const NATIVE_LANGUAGE: &str = "English";
+
+fn model() -> String {
+    std::env::var("KLEEP_DICTIONARY_MODEL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_MODEL.to_string())
+}
 
 fn system_prompt() -> String {
     format!(
@@ -22,7 +30,7 @@ fn system_prompt() -> String {
 
 pub(super) fn request_body(word: &str) -> serde_json::Value {
     json!({
-        "model": MODEL,
+        "model": model(),
         "thinking": { "type": "disabled" },
         "temperature": 0.2,
         "max_tokens": 800,

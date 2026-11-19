@@ -5,6 +5,7 @@ mod terminal;
 use std::process::Command;
 
 pub use parser::load_apps;
+pub use terminal::open_terminal;
 
 #[derive(Debug, Clone)]
 pub struct DesktopApp {

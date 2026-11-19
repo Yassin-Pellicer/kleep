@@ -121,18 +121,55 @@ fn parse_desktop_file(path: &Path, id: String) -> Option<DesktopApp> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
 
-    let mut search_fields = vec![name.to_lowercase()];
+    let mut search_fields = Vec::new();
     if let Some(description) = &description {
         search_fields.push(description.to_lowercase());
     }
-    if let Some(keywords) = entries.get("Keywords") {
-        for keyword in keywords.split(';') {
-            let keyword = keyword.trim();
-            if !keyword.is_empty() {
-                search_fields.push(keyword.to_lowercase());
+    // Include localized keywords too: someone typing "gestor" in Spanish
+    // should find Files just like someone typing "manager".
+    for (key, value) in &entries {
+        if key == "Keywords" || key.starts_with("Keywords[") {
+            for keyword in value.split(';') {
+                let keyword = keyword.trim();
+                if !keyword.is_empty() {
+                    search_fields.push(keyword.to_lowercase());
+                }
             }
         }
     }
+    if let Some(categories) = entries.get("Categories") {
+        for category in categories.split(';') {
+            let category = category.trim();
+            if category.is_empty() {
+                continue;
+            }
+            search_fields.push(category.to_lowercase());
+
+            // Split CamelCase categories such as "WebBrowser" or "FileManager"
+            // so "browser" and "manager" match as whole words.
+            let mut current = String::new();
+            for character in category.chars() {
+                if character.is_uppercase() && !current.is_empty() {
+                    search_fields.push(std::mem::take(&mut current).to_lowercase());
+                }
+                current.push(character);
+            }
+            if !current.is_empty() {
+                search_fields.push(current.to_lowercase());
+            }
+        }
+    }
+    // Index localized names as well, so "ajedrez" finds Chess and "archivos"
+    // finds Files. The visible name stays the unlocalized one.
+    for (key, value) in &entries {
+        if key.starts_with("Name[") || key.starts_with("GenericName") {
+            let value = value.trim();
+            if !value.is_empty() {
+                search_fields.push(value.to_lowercase());
+            }
+        }
+    }
+
     if let Some(program) = exec.first()
         && let Some(stem) = PathBuf::from(program)
             .file_stem()

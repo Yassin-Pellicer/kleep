@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import type { VoiceRecordingStatus, VoiceStatus, VoiceTranscript } from "../../types";
+import type {
+  VoiceRecordingStatus,
+  VoiceSetupStatus,
+  VoiceStatus,
+  VoiceTranscript,
+} from "../../types";
 import { useRequestGuard } from "../../hooks/useRequestGuard";
 
 function startVoiceRecording(): Promise<void> {
@@ -13,6 +18,10 @@ function stopVoiceRecording(): Promise<VoiceTranscript> {
 
 function getVoiceRecordingStatus(): Promise<VoiceRecordingStatus> {
   return invoke<VoiceRecordingStatus>("voice_recording_status");
+}
+
+function getVoiceSetupStatus(): Promise<VoiceSetupStatus> {
+  return invoke<VoiceSetupStatus>("voice_setup_status");
 }
 
 function cancelVoiceRecording(): Promise<void> {
@@ -119,16 +128,39 @@ export function useVoice() {
     setLevel(0);
     setStatus("starting");
 
+    let setupTimer: number | null = null;
+    const stopSetupPolling = () => {
+      if (setupTimer !== null) {
+        window.clearInterval(setupTimer);
+        setupTimer = null;
+      }
+    };
+
     try {
       await stopSpeaking().catch(() => {});
       if (!guard.isCurrent(id)) return;
 
+      // The first run provisions the Python service; show what is happening
+      // instead of an indefinite spinner.
+      setupTimer = window.setInterval(() => {
+        void getVoiceSetupStatus()
+          .then((setup) => {
+            if (!guard.isCurrent(id)) return;
+            if (setup.state === "preparing" && setup.message) {
+              setError(setup.message);
+            }
+          })
+          .catch(() => {});
+      }, 1000);
+
       await startVoiceRecording();
+      stopSetupPolling();
       if (!guard.isCurrent(id)) {
         await cancelVoiceRecording().catch(() => {});
         return;
       }
 
+      setError(null);
       setStatus("recording");
       startPolling(id);
     } catch (voiceError) {
@@ -137,6 +169,7 @@ export function useVoice() {
         setStatus("idle");
       }
     } finally {
+      stopSetupPolling();
       busy.current = false;
     }
   };

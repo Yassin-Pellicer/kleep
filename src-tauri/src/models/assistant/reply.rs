@@ -7,4 +7,7 @@ use super::source::ChatSource;
 pub struct AssistantReply {
     pub content: String,
     pub sources: Vec<ChatSource>,
+    /// True when the assistant completed a user-facing action such as opening
+    /// an app, so the palette can close instead of showing a confirmation.
+    pub opened: bool,
 }

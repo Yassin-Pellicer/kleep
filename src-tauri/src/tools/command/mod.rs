@@ -31,9 +31,11 @@ pub(super) fn definition() -> Value {
                             15 second timeout: add `--no-block` to power actions, and launch \
                             GUI programs in the background with output redirected (for \
                             example `nohup google-chrome-stable >/dev/null 2>&1 &`) so they \
-                            return immediately. Interactive monitors never return on their \
-                            own: use a bounded form such as `nvidia-smi pmon -c 1` or \
-                            `top -b -n 1`, not bare `pmon`, `top`, `watch`, or `btop`. The \
+                            return immediately. Interactive programs (btop, htop, top, \
+                            watch, vim, nano, less, tmux, shells, REPLs) must use \
+                            run_in_terminal instead; never background them. For a one-shot \
+                            snapshot use a bounded form such as `top -b -n 1` or \
+                            `nvidia-smi pmon -c 1`. The \
                             result also includes the list of \
                             programs currently running for the user, so use that instead of \
                             making a separate call just to enumerate them.",
@@ -51,6 +53,10 @@ pub(super) fn definition() -> Value {
             }
         }
     })
+}
+
+pub(super) async fn run_shell(command: &str) -> String {
+    shell::run(command).await
 }
 
 pub(super) async fn execute(arguments: &str, _context: &mut ToolContext<'_>) -> ToolOutcome {

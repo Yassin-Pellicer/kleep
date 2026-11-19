@@ -10,7 +10,7 @@ pub use assistant::{AssistantReply, ChatMessage, ChatSource};
 pub use clipboard::ClipboardEntry;
 pub use dictionary::DictionaryEntry;
 pub use error::ServiceError;
-pub use voice::{VoiceRecordingStatus, VoiceTranscript};
+pub use voice::{VoiceRecordingStatus, VoiceSetupStatus, VoiceTranscript};
 
 /// Historical name for `ServiceError`; kept so domain code reads naturally.
 pub type AssistantError = ServiceError;

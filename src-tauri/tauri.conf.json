@@ -33,13 +33,37 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["deb", "rpm", "appimage"],
+    "category": "Utility",
+    "publisher": "Yassin",
+    "shortDescription": "Keyboard-first desktop palette",
+    "longDescription": "Kleep is a keyboard-first desktop palette for Linux. Launch applications, browse clipboard history, look up words, and chat with a local or hosted assistant.",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "linux": {
+      "deb": {
+        "section": "utils",
+        "recommends": [
+          "wl-clipboard",
+          "xclip",
+          "pulseaudio-utils",
+          "python3-venv",
+          "python3-pip"
+        ]
+      },
+      "rpm": {
+        "recommends": [
+          "wl-clipboard",
+          "xclip",
+          "pulseaudio-utils",
+          "python3-pip"
+        ]
+      }
+    }
   }
 }

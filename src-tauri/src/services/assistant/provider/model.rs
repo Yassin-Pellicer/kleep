@@ -8,7 +8,7 @@ use crate::models::ServiceError;
 use super::CLIENT;
 
 const DEEPSEEK_CHAT_URL: &str = "https://api.deepseek.com/beta/chat/completions";
-const DEEPSEEK_MODEL: &str = "deepseek-flash";
+const DEFAULT_DEEPSEEK_MODEL: &str = "deepseek-flash";
 const DEFAULT_OLLAMA_URL: &str = "http://127.0.0.1:11434";
 const DEFAULT_OLLAMA_MODEL: &str = "qwen3.5:9b";
 /// Keep the local model resident so idle gaps don't trigger another cold load.
@@ -67,7 +67,8 @@ fn ollama_config() -> Option<ModelConfig> {
 }
 
 /// Selects the chat model. Set `KLEEP_ASSISTANT_PROVIDER=ollama` to use a
-/// local Ollama model instead of DeepSeek.
+/// local Ollama model instead of DeepSeek, `KLEEP_OLLAMA_MODEL` to pick the
+/// Ollama model, and `KLEEP_DEEPSEEK_MODEL` to pick the hosted one.
 pub fn config(api_key: Option<&str>) -> Result<ModelConfig, ServiceError> {
     if let Some(config) = ollama_config() {
         return Ok(config);
@@ -77,10 +78,15 @@ pub fn config(api_key: Option<&str>) -> Result<ModelConfig, ServiceError> {
         .map(str::to_string)
         .filter(|value| !value.trim().is_empty())
         .ok_or(ServiceError::MissingApiKey)?;
+    let model = env::var("KLEEP_DEEPSEEK_MODEL")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| DEFAULT_DEEPSEEK_MODEL.to_string());
 
     Ok(ModelConfig {
         url: DEEPSEEK_CHAT_URL.to_string(),
-        model: DEEPSEEK_MODEL.to_string(),
+        model,
         api_key: Some(api_key),
         local: false,
         timeout: Duration::from_secs(30),

@@ -6,15 +6,18 @@ use crate::models::ChatSource;
 pub struct ToolContext<'a> {
     pub search_api_key: Option<&'a str>,
     pub local: bool,
+    /// The user's latest message, used to validate actions before running them.
+    pub request: String,
     pub sources: Vec<ChatSource>,
     pub seen_urls: HashSet<String>,
 }
 
 impl<'a> ToolContext<'a> {
-    pub fn new(search_api_key: Option<&'a str>, local: bool) -> Self {
+    pub fn new(search_api_key: Option<&'a str>, local: bool, request: String) -> Self {
         Self {
             search_api_key,
             local,
+            request,
             sources: Vec::new(),
             seen_urls: HashSet::new(),
         }

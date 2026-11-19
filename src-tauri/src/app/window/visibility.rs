@@ -14,12 +14,7 @@ const FADE: Duration = Duration::from_millis(140);
 /// window that was focused before the palette opened.
 const PASTE_SETTLE: Duration = Duration::from_millis(20);
 
-pub fn show_palette(window: &WebviewWindow) {
-    // Do not pop Kleep over the GNOME Overview.
-    if gnome::overview_is_active() {
-        return;
-    }
-
+fn reveal_palette(window: &WebviewWindow) {
     state::invalidate_hides();
     state::cancel_pending_paste();
     state::mark_shown();
@@ -39,6 +34,37 @@ pub fn show_palette(window: &WebviewWindow) {
     thread::spawn(move || {
         thread::sleep(Duration::from_millis(60));
         let _ = window.emit("palette-shown", ());
+    });
+}
+
+pub fn show_palette(window: &WebviewWindow) {
+    // Do not pop Kleep over the GNOME Overview.
+    if gnome::overview_is_active() {
+        return;
+    }
+
+    reveal_palette(window);
+}
+
+/// Opening Kleep from the application grid happens while the GNOME Overview
+/// is still closing. Wait for it to settle instead of silently doing nothing.
+pub fn show_palette_on_launch(window: &WebviewWindow) {
+    if !gnome::overview_is_active() {
+        reveal_palette(window);
+        return;
+    }
+
+    let window = window.clone();
+    thread::spawn(move || {
+        for _ in 0..10 {
+            thread::sleep(Duration::from_millis(150));
+            if !gnome::overview_is_active() {
+                reveal_palette(&window);
+                return;
+            }
+        }
+
+        reveal_palette(&window);
     });
 }
 
