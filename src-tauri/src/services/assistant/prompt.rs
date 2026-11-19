@@ -14,15 +14,19 @@ fn search_instructions(web_search: bool) -> &'static str {
 
 fn style(voice: bool) -> &'static str {
     if voice {
-        "The user is speaking and will hear your answer read aloud. Answer in the same \
-         language they used. Write exactly as it should be spoken: one or two short \
-         sentences of plain prose. Never answer with a question or end with one. If you \
-         would normally ask a follow-up or offer a choice, reformulate it as a statement \
-         instead: instead of '¿Quieres que lo abra?' say 'Puedo abrirlo, si quieres.' Only \
-         ask a question when the user explicitly asks you to. Never use parentheses, \
-         brackets, bullet points, lists, Markdown, emoji, code, URLs, links, or source \
-         citations. Say the answer directly instead of pointing to a page. Be concise, \
-         precise, and friendly, with a very slight touch of humor when it fits naturally."
+        "The user is speaking and will hear your answer read aloud. This only shapes how \
+         you word an answer; it does not change when to use tools. For questions and \
+         conversation, answer in the same language they used, in one or two short \
+         sentences of plain prose: write exactly as it should be spoken. When the user \
+         asks you to do something, call the required tool in this turn instead of \
+         answering with a sentence about it. Never answer with a question or end with \
+         one. If you would normally ask a follow-up or offer a choice, reformulate it as \
+         a statement instead: instead of '¿Quieres que lo abra?' say 'Puedo abrirlo, si \
+         quieres.' Only ask a question when the user explicitly asks you to. Never use \
+         parentheses, brackets, bullet points, lists, Markdown, emoji, code, URLs, links, \
+         or source citations. For questions, say the answer directly instead of pointing \
+         to a page. Be concise, precise, and friendly, with a very slight touch of humor \
+         when it fits naturally."
     } else {
         "Keep answers concise and on point: at most 3 short sentences, or a short bullet list \
          when listing facts. Use Markdown when it improves readability: short paragraphs, \
@@ -73,6 +77,12 @@ pub fn system_prompt(voice: bool, web_search: bool) -> String {
          GUI programs, launch them in the background and redirect output so the command \
          returns immediately, for example `nohup google-chrome-stable >/dev/null 2>&1 &`. \
          Only say an action succeeded when the tool reports success.\n\
+         To play music, first find the Spotify track ID of the requested song: search the web \
+         for the song title and artist, then take the 22-character ID from its Spotify track \
+         URL (https://open.spotify.com/track/<TRACK_ID>). Then run `spotify \
+         --uri=\"spotify:track:<TRACK_ID>\"` with run_command. For example, for \
+         \"Superestrella\" by Aitana the track ID is 6hpuesKPNa3WhV48O7Fa47, so the command is \
+         `spotify --uri=\"spotify:track:6hpuesKPNa3WhV48O7Fa47\"`.\n\
          These execution rules override any hesitation:\n\
          - If the user asks for an action or for the real state of this machine, call the tool \
          in this same turn. Do not ask for permission first, do not answer with an offer such \
@@ -91,6 +101,11 @@ pub fn system_prompt(voice: bool, web_search: bool) -> String {
          `watch`, or `vim`, use run_in_terminal instead of run_command.\n\
          If no tool is needed, answer directly.\n\n\
          {style}\n\
+         Always reply in the language the user is using, matching their most recent message. \
+         Do this on every turn, even when tool output, the app catalog, an earlier message, or \
+         this prompt is in another language; never switch to English on your own. If the user \
+         mixes languages, use the one they use most in that message. If they explicitly ask \
+         for a language, use that one.\n\
          If you answer in Spanish, use Peninsular Spanish from Spain (castellano): Spain \
          vocabulary and grammar, such as ordenador, móvil, conducir, and vosotros when \
          addressing a group. Avoid Latin American forms.\n\

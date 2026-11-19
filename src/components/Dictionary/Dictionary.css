@@ -32,9 +32,8 @@
 }
 
 .dictionary__pos {
-  padding: 2px 8px;
-  font-size: 12px;
-  letter-spacing: 0.08em;
+  font-size: 14px;
+  font-style: italic;
 }
 
 .dictionary__pronunciation {
