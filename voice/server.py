@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Local speech-to-text and text-to-speech service for Kleep.
 
-Uses faster-whisper (CUDA) for transcription and Piper for speech synthesis.
-Audio is captured/played through PipeWire/PulseAudio command-line tools.
+Uses faster-whisper (CUDA) for transcription and Chatterbox for speech
+synthesis. Audio is captured/played through PipeWire/PulseAudio command-line
+tools.
 """
 
 import array
 import ctypes
+import gc
 import glob
 import json
 import math
@@ -24,9 +26,13 @@ import wave
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+import numpy as np
+
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 SAMPLE_RATE = 16000
 MAX_RECORD_SECONDS = 120
-PROTOCOL_VERSION = 2
+PROTOCOL_VERSION = 16
 
 # Automatic end-of-speech detection. Recording keeps going until the caller
 # stops it, but once speech has been heard and the line stays quiet for
@@ -35,13 +41,14 @@ FRAME_SECONDS = 0.03
 FRAME_SAMPLES = int(SAMPLE_RATE * FRAME_SECONDS)
 FRAME_BYTES = FRAME_SAMPLES * 2
 SPEECH_MIN_SECONDS = 0.15
+CALIBRATION_SECONDS = 0.35
 AUTO_STOP_SILENCE_SECONDS = float(
-    os.environ.get("KLEEP_AUTO_STOP_SILENCE", "1.8")
+    os.environ.get("KLEEP_AUTO_STOP_SILENCE", "1.2")
 )
 NO_SPEECH_TIMEOUT_SECONDS = float(
     os.environ.get("KLEEP_NO_SPEECH_TIMEOUT", "12")
 )
-MIN_SPEECH_RMS = float(os.environ.get("KLEEP_SPEECH_RMS", "300"))
+MIN_SPEECH_RMS = float(os.environ.get("KLEEP_SPEECH_RMS", "200"))
 INITIAL_NOISE_FLOOR = 120.0
 
 
@@ -65,11 +72,38 @@ preload_cuda_libraries()
 
 from faster_whisper import WhisperModel  # noqa: E402
 from piper import PiperVoice  # noqa: E402
+from piper.config import SynthesisConfig  # noqa: E402
 from piper.download_voices import download_voice  # noqa: E402
 
 PORT = int(os.environ.get("KLEEP_VOICE_PORT", "8765"))
 BASE_DIR = Path(__file__).resolve().parent
 PIPER_DIR = BASE_DIR / "models" / "piper"
+PIPER_VOICE_EN = os.environ.get("KLEEP_TTS_PIPER_VOICE_EN", "en_US-lessac-medium")
+PIPER_VOICE_ES = os.environ.get("KLEEP_TTS_PIPER_VOICE_ES", "es_ES-davefx-medium")
+PIPER_SPEAKER_ES = int(os.environ.get("KLEEP_TTS_PIPER_SPEAKER_ES", "1"))
+CHATTERBOX_REFERENCES = {
+    "en": BASE_DIR / "models" / "chatterbox" / "en_reference.wav",
+    "es": BASE_DIR / "models" / "chatterbox" / "es_reference.wav",
+}
+_legacy_engine = os.environ.get("KLEEP_TTS_ENGINE")
+TTS_ENGINE_EN = (
+    os.environ.get("KLEEP_TTS_ENGINE_EN") or _legacy_engine or "piper"
+).lower()
+TTS_ENGINE_ES = (
+    os.environ.get("KLEEP_TTS_ENGINE_ES")
+    or _legacy_engine
+    or os.environ.get("KLEEP_TTS_SPANISH_ENGINE")
+    or "piper"
+).lower()
+TTS_ENGINES = {"en": TTS_ENGINE_EN, "es": TTS_ENGINE_ES}
+PIPER_LENGTH_SCALE = float(os.environ.get("KLEEP_TTS_PIPER_LENGTH_SCALE", "1.05"))
+SENTENCE_PAUSE_SECONDS = float(os.environ.get("KLEEP_TTS_SENTENCE_PAUSE", "0.3"))
+CLAUSE_PAUSE_SECONDS = float(os.environ.get("KLEEP_TTS_CLAUSE_PAUSE", "0.14"))
+# Unload Chatterbox after this many seconds without English speech so it stops
+# holding VRAM. Set to 0 to keep it loaded forever.
+CHATTERBOX_IDLE_SECONDS = float(
+    os.environ.get("KLEEP_CHATTERBOX_IDLE_SECONDS", "300")
+)
 
 print("loading Whisper large-v3-turbo on CUDA...", flush=True)
 try:
@@ -96,11 +130,110 @@ def load_piper_voice(name: str) -> PiperVoice:
     return PiperVoice.load(str(path))
 
 
-print("loading Piper voices...", flush=True)
-voices = {
-    "en": load_piper_voice("en_US-lessac-medium"),
-    "es": load_piper_voice("es_ES-davefx-medium"),
-}
+def _get_piper(code: str) -> PiperVoice:
+    """Return the Piper voice for ``code``, loading it on first use."""
+    global piper_en, piper_es
+    if code == "es":
+        if piper_es is None:
+            piper_es = load_piper_voice(PIPER_VOICE_ES)
+        return piper_es
+    if piper_en is None:
+        piper_en = load_piper_voice(PIPER_VOICE_EN)
+    return piper_en
+
+
+chatterbox = None
+chatterbox_last_used = 0.0
+chatterbox_lock = threading.Lock()
+
+
+def _load_chatterbox():
+    """Load Chatterbox on GPU when possible, falling back to CPU."""
+    try:
+        import torch  # noqa: F401
+        from chatterbox.mtl_tts import (  # noqa: E402
+            ChatterboxMultilingualTTS,
+        )
+
+        for reference in CHATTERBOX_REFERENCES.values():
+            if not reference.is_file():
+                raise RuntimeError(
+                    f"missing reference audio {reference}; run voice/setup.sh"
+                )
+
+        requested = os.environ.get("KLEEP_CHATTERBOX_DEVICE", "auto").lower()
+        devices = (
+            ["cuda", "cpu"]
+            if requested == "auto"
+            else [requested]
+        )
+
+        for device in devices:
+            try:
+                print(f"loading Chatterbox multilingual on {device}...", flush=True)
+                model = ChatterboxMultilingualTTS.from_pretrained(device=device)
+                model.prepare_conditionals(str(CHATTERBOX_REFERENCES["en"]))
+                print(f"Chatterbox ready on {device}.", flush=True)
+                return model
+            except Exception as error:
+                print(
+                    f"Chatterbox failed on {device}: {error}",
+                    flush=True,
+                )
+    except Exception as error:
+        print(f"Chatterbox unavailable: {error}", flush=True)
+    return None
+
+
+def _get_chatterbox():
+    global chatterbox, chatterbox_last_used
+    with chatterbox_lock:
+        if chatterbox is None:
+            chatterbox = _load_chatterbox()
+        chatterbox_last_used = time.monotonic()
+        return chatterbox
+
+
+def _unload_chatterbox() -> None:
+    global chatterbox
+    with chatterbox_lock:
+        if chatterbox is None:
+            return
+        chatterbox = None
+    gc.collect()
+    try:
+        import torch
+    except ImportError:
+        return
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    print("Chatterbox unloaded to free VRAM.", flush=True)
+
+
+def _chatterbox_reaper() -> None:
+    while True:
+        time.sleep(30)
+        if chatterbox is None or CHATTERBOX_IDLE_SECONDS <= 0:
+            continue
+        if time.monotonic() - chatterbox_last_used < CHATTERBOX_IDLE_SECONDS:
+            continue
+        # Only unload while no synthesis is running.
+        if not tts_lock.acquire(blocking=False):
+            continue
+        try:
+            _unload_chatterbox()
+        finally:
+            tts_lock.release()
+
+
+piper_en = None
+piper_es = None
+if TTS_ENGINES["en"] == "piper":
+    print(f"loading Piper English voice {PIPER_VOICE_EN}...", flush=True)
+    piper_en = load_piper_voice(PIPER_VOICE_EN)
+if TTS_ENGINES["es"] == "piper":
+    print(f"loading Piper Spanish voice {PIPER_VOICE_ES}...", flush=True)
+    piper_es = load_piper_voice(PIPER_VOICE_ES)
 
 record_lock = threading.Lock()
 playback_lock = threading.Lock()
@@ -118,14 +251,79 @@ record_status = {
 }
 
 
-def _player_command(path: str) -> list[str] | None:
+def _raw_player_command(sample_rate: int) -> list[str] | None:
     if shutil.which("paplay"):
-        return ["paplay", path]
+        return [
+            "paplay",
+            "--raw",
+            "--format=s16le",
+            f"--rate={sample_rate}",
+            "--channels=1",
+        ]
     if shutil.which("pw-play"):
-        return ["pw-play", path]
+        return [
+            "pw-play",
+            "--raw",
+            "--format=s16",
+            f"--rate={sample_rate}",
+            "--channels=1",
+        ]
     if shutil.which("aplay"):
-        return ["aplay", "-q", path]
+        return [
+            "aplay",
+            "-q",
+            "-f",
+            "S16_LE",
+            "-r",
+            str(sample_rate),
+            "-c",
+            "1",
+        ]
     return None
+
+
+def _start_raw_player(sample_rate: int) -> subprocess.Popen:
+    global playback
+
+    command = _raw_player_command(sample_rate)
+    if command is None:
+        raise RuntimeError("no audio player found (paplay/pw-play/aplay)")
+
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+    with playback_lock:
+        previous = playback
+        playback = process
+
+    if previous is not None and previous.poll() is None:
+        previous.terminate()
+
+    def cleanup() -> None:
+        global playback
+        process.wait()
+        with playback_lock:
+            if playback is process:
+                playback = None
+
+    threading.Thread(target=cleanup, daemon=True).start()
+    return process
+
+
+def _write_audio(process: subprocess.Popen, audio: np.ndarray) -> bool:
+    if process.stdin is None:
+        return False
+    pcm = (np.clip(audio, -1.0, 1.0) * 32767).astype("<i2").tobytes()
+    try:
+        process.stdin.write(pcm)
+        process.stdin.flush()
+        return True
+    except (BrokenPipeError, ValueError):
+        return False
 
 
 def stop_playback() -> None:
@@ -141,36 +339,6 @@ def stop_playback() -> None:
             process.kill()
 
 
-def _play(path: str) -> None:
-    global playback
-
-    command = _player_command(path)
-    if command is None:
-        Path(path).unlink(missing_ok=True)
-        raise RuntimeError("no audio player found (paplay/pw-play/aplay)")
-
-    process = subprocess.Popen(
-        command,
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-
-    with playback_lock:
-        if playback is not None and playback.poll() is None:
-            playback.terminate()
-        playback = process
-
-    def cleanup() -> None:
-        process.wait()
-        try:
-            os.unlink(path)
-        except OSError:
-            pass
-
-    threading.Thread(target=cleanup, daemon=True).start()
-
-
 def strip_markdown(text: str) -> str:
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
     text = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", text)
@@ -180,24 +348,312 @@ def strip_markdown(text: str) -> str:
     return text.strip()
 
 
+SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+")
+CLAUSE_SPLIT = re.compile(r"(?<=[,;:])\s+")
+MAX_CHUNK_CHARS = 180
+
+
+def speech_chunks(text: str) -> list[tuple[str, float]]:
+    """Split text into TTS-sized chunks with a pause after each one."""
+    chunks: list[tuple[str, float]] = []
+
+    for sentence in SENTENCE_SPLIT.split(text):
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        if len(sentence) <= MAX_CHUNK_CHARS:
+            chunks.append((sentence, SENTENCE_PAUSE_SECONDS))
+            continue
+
+        pieces = [piece.strip() for piece in CLAUSE_SPLIT.split(sentence) if piece.strip()]
+        current = ""
+        for piece in pieces:
+            candidate = f"{current} {piece}".strip()
+            if current and len(candidate) > MAX_CHUNK_CHARS:
+                chunks.append((current, CLAUSE_PAUSE_SECONDS))
+                current = piece
+            else:
+                current = candidate
+
+        if current:
+            chunks.append((current, SENTENCE_PAUSE_SECONDS))
+
+    return chunks
+
+
+MONTHS_ES = (
+    "enero",
+    "febrero",
+    "marzo",
+    "abril",
+    "mayo",
+    "junio",
+    "julio",
+    "agosto",
+    "septiembre",
+    "octubre",
+    "noviembre",
+    "diciembre",
+)
+
+_ES_SMALL = (
+    "cero",
+    "uno",
+    "dos",
+    "tres",
+    "cuatro",
+    "cinco",
+    "seis",
+    "siete",
+    "ocho",
+    "nueve",
+    "diez",
+    "once",
+    "doce",
+    "trece",
+    "catorce",
+    "quince",
+    "dieciséis",
+    "diecisiete",
+    "dieciocho",
+    "diecinueve",
+    "veinte",
+    "veintiuno",
+    "veintidós",
+    "veintitrés",
+    "veinticuatro",
+    "veinticinco",
+    "veintiséis",
+    "veintisiete",
+    "veintiocho",
+    "veintinueve",
+)
+_ES_TENS = ("", "", "", "treinta", "cuarenta", "cincuenta")
+_ES_DIGITS = (
+    "cero",
+    "uno",
+    "dos",
+    "tres",
+    "cuatro",
+    "cinco",
+    "seis",
+    "siete",
+    "ocho",
+    "nueve",
+)
+_ES_ORDINALS_M = (
+    "",
+    "primero",
+    "segundo",
+    "tercero",
+    "cuarto",
+    "quinto",
+    "sexto",
+    "séptimo",
+    "octavo",
+    "noveno",
+    "décimo",
+)
+_ES_ORDINALS_F = (
+    "",
+    "primera",
+    "segunda",
+    "tercera",
+    "cuarta",
+    "quinta",
+    "sexta",
+    "séptima",
+    "octava",
+    "novena",
+    "décima",
+)
+
+
+def _es_number(value: int) -> str:
+    """Render 0-99 as Spanish words (used by the time normalizer)."""
+    if 0 <= value < len(_ES_SMALL):
+        return _ES_SMALL[value]
+    if 0 <= value < 100:
+        tens, ones = divmod(value, 10)
+        word = _ES_TENS[tens]
+        return word if ones == 0 else f"{word} y {_ES_SMALL[ones]}"
+    return str(value)
+
+
+def _normalize_time_es(match: re.Match) -> str:
+    hour = int(match.group("hour"))
+    minute = int(match.group("minute"))
+    if hour > 23 or minute > 59:
+        return match.group(0)
+
+    hour = hour % 12 or 12
+    hour_word = "una" if hour == 1 else _es_number(hour)
+    article = "la" if hour == 1 else "las"
+    lead = match.group("lead") or ""
+    if match.group("article"):
+        prefix = f"{lead}{article} {hour_word}"
+    else:
+        prefix = f"{article} {hour_word}"
+    if minute == 0:
+        body = "en punto"
+    elif minute == 15:
+        body = "y cuarto"
+    elif minute == 30:
+        body = "y media"
+    elif minute == 45:
+        body = "menos cuarto"
+    else:
+        body = f"y {_es_number(minute)}"
+    return f"{prefix} {body}"
+
+
+def _normalize_date_es(match: re.Match) -> str:
+    day = int(match.group(1))
+    month = int(match.group(2))
+    year = match.group(3)
+    if not (1 <= day <= 31 and 1 <= month <= 12):
+        return match.group(0)
+    return f"{day} de {MONTHS_ES[month - 1]} de {year}"
+
+
+def _normalize_date_iso_es(match: re.Match) -> str:
+    year = int(match.group(1))
+    month = int(match.group(2))
+    day = int(match.group(3))
+    if not (1 <= day <= 31 and 1 <= month <= 12):
+        return match.group(0)
+    return f"{day} de {MONTHS_ES[month - 1]} de {year}"
+
+
+def _normalize_ordinal_es(match: re.Match) -> str:
+    value = int(match.group(1))
+    table = _ES_ORDINALS_F if match.group(2) == "ª" else _ES_ORDINALS_M
+    if 0 < value < len(table):
+        return table[value]
+    return match.group(0)
+
+
+def _spell_digits_es(match: re.Match) -> str:
+    digits = [char for char in match.group(0) if char.isdigit()]
+    return " ".join(_ES_DIGITS[int(digit)] for digit in digits)
+
+
+def normalize_for_speech(text: str, code: str) -> str:
+    """Rewrite written forms that the TTS phonemizer reads poorly.
+
+    Piper/espeak already handles most numbers. This fills the gaps that sound
+    wrong in Spanish: dates, clock times, dotted decimals, ordinals and phone
+    numbers.
+    """
+    if code != "es":
+        return text
+
+    text = re.sub(
+        r"\b(\d{4})-(\d{2})-(\d{2})\b", _normalize_date_iso_es, text
+    )
+    text = re.sub(
+        r"\b(\d{1,2})/(\d{1,2})/(\d{2,4})\b", _normalize_date_es, text
+    )
+    text = re.sub(
+        r"(?:(?P<lead>\ba\s+)?(?P<article>\blas?)\s+)?(?P<hour>\d{1,2}):(?P<minute>\d{2})(?:\s*h(?:oras?)?\b)?",
+        _normalize_time_es,
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\b(\d{1,2})\.?\s*(º|ª)", _normalize_ordinal_es, text)
+    # Phone numbers and long digit strings are unreadable as a single number.
+    text = re.sub(
+        r"(?<![\w+])\+\d{1,3}(?:[ .-]?\d{2,4}){2,}(?![\w])",
+        _spell_digits_es,
+        text,
+    )
+    text = re.sub(r"(?<!\d)\d{9,}(?!\d)", _spell_digits_es, text)
+    # A dot followed by one or two digits is a decimal; dot thousands
+    # separators (1.234) are left alone because espeak reads them correctly.
+    text = re.sub(r"(?<=\d)\.(?=\d{1,2}(?!\d))", " coma ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def speak(text: str, language: str) -> None:
     text = strip_markdown(text)
     if not text:
         raise ValueError("no text to speak")
 
-    voice = voices["es" if str(language).lower().startswith("es") else "en"]
-    file_descriptor, path = tempfile.mkstemp(prefix="kleep-tts-", suffix=".wav")
-    os.close(file_descriptor)
+    code = "es" if str(language).lower().startswith("es") else "en"
+    text = normalize_for_speech(text, code)
+    chunks = speech_chunks(text)
+    if not chunks:
+        raise ValueError("no text to speak")
 
-    try:
-        with tts_lock:
-            with wave.open(path, "wb") as wav:
-                voice.synthesize_wav(text, wav)
-    except Exception:
-        Path(path).unlink(missing_ok=True)
-        raise
+    with tts_lock:
+        engine = TTS_ENGINES[code]
+        chatterbox_voice = _get_chatterbox() if engine == "chatterbox" else None
+        if chatterbox_voice is not None:
+            chatterbox_voice.prepare_conditionals(
+                str(CHATTERBOX_REFERENCES[code])
+            )
 
-    _play(path)
+        process: subprocess.Popen | None = None
+        sample_rate = 24_000
+
+        for index, (chunk, pause) in enumerate(chunks):
+            if chatterbox_voice is not None:
+                wav = chatterbox_voice.generate(
+                    chunk,
+                    language_id=code,
+                    exaggeration=0.5,
+                    cfg_weight=0.5,
+                )
+                sample_rate = chatterbox_voice.sr
+                audio = np.asarray(
+                    wav.squeeze(0).detach().cpu().numpy(),
+                    dtype=np.float32,
+                )
+            else:
+                piper = _get_piper(code)
+                speaker_id = None
+                if code == "es" and int(getattr(piper.config, "num_speakers", 1)) > 1:
+                    speaker_id = PIPER_SPEAKER_ES
+                    if speaker_id >= piper.config.num_speakers:
+                        speaker_id = 0
+
+                parts: list[np.ndarray] = []
+                for audio_chunk in piper.synthesize(
+                    chunk,
+                    syn_config=SynthesisConfig(
+                        speaker_id=speaker_id,
+                        length_scale=PIPER_LENGTH_SCALE,
+                    ),
+                ):
+                    sample_rate = audio_chunk.sample_rate
+                    parts.append(
+                        np.asarray(
+                            audio_chunk.audio_float_array, dtype=np.float32
+                        )
+                    )
+                if not parts:
+                    continue
+                audio = np.concatenate(parts)
+
+            if process is None:
+                process = _start_raw_player(sample_rate)
+
+            if not _write_audio(process, audio):
+                return
+
+            if index < len(chunks) - 1 and pause > 0:
+                silence = np.zeros(
+                    int(sample_rate * pause), dtype=np.float32
+                )
+                if not _write_audio(process, silence):
+                    return
+
+        if process is not None and process.stdin is not None:
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
 
 
 def _frame_rms(frame: bytes) -> float:
@@ -229,6 +685,7 @@ def _monitor_recording(path: str, stop_event: threading.Event) -> None:
     noise_floor = INITIAL_NOISE_FLOOR
     speech_run = 0.0
     speech_started = False
+    speaking_now = False
     silence = 0.0
     elapsed = 0.0
 
@@ -247,11 +704,32 @@ def _monitor_recording(path: str, stop_event: threading.Event) -> None:
                     del buffer[:FRAME_BYTES]
 
                     rms = _frame_rms(frame)
-                    level = min(1.0, math.sqrt(rms / 5000.0))
                     elapsed += FRAME_SECONDS
-                    speaking = rms >= max(MIN_SPEECH_RMS, noise_floor * 1.8)
 
-                    if speaking:
+                    if elapsed < CALIBRATION_SECONDS:
+                        # Estimate the room noise before accepting speech.
+                        noise_floor = noise_floor * 0.7 + rms * 0.3
+                        speaking_now = False
+                    else:
+                        # Hysteresis keeps room noise from flickering the meter
+                        # and the auto-stop detector into a speech state.
+                        start_threshold = max(MIN_SPEECH_RMS, noise_floor * 1.1)
+                        stop_threshold = max(
+                            MIN_SPEECH_RMS * 0.6, noise_floor * 1.02
+                        )
+                        speaking_now = (
+                            rms >= stop_threshold
+                            if speaking_now
+                            else rms >= start_threshold
+                        )
+
+                    level = (
+                        min(1.0, math.sqrt(rms / 5000.0))
+                        if speech_started
+                        else 0.0
+                    )
+
+                    if speaking_now:
                         speech_run += FRAME_SECONDS
                         silence = 0.0
                         if speech_run >= SPEECH_MIN_SECONDS:
@@ -260,7 +738,8 @@ def _monitor_recording(path: str, stop_event: threading.Event) -> None:
                         speech_run = 0.0
                         if speech_started:
                             silence += FRAME_SECONDS
-                        noise_floor = noise_floor * 0.9 + rms * 0.1
+                        if elapsed >= CALIBRATION_SECONDS:
+                            noise_floor = noise_floor * 0.9 + rms * 0.1
 
                     auto_stop = (
                         speech_started and silence >= AUTO_STOP_SILENCE_SECONDS
@@ -269,7 +748,7 @@ def _monitor_recording(path: str, stop_event: threading.Event) -> None:
                     )
 
                     with record_status_lock:
-                        record_status["speech"] = speaking
+                        record_status["speech"] = speaking_now
                         record_status["silence"] = silence
                         record_status["level"] = level
                         if auto_stop:
@@ -501,6 +980,7 @@ if __name__ == "__main__":
     signal.signal(signal.SIGTERM, handle_signal)
     signal.signal(signal.SIGINT, handle_signal)
     threading.Thread(target=watch_parent, daemon=True).start()
+    threading.Thread(target=_chatterbox_reaper, daemon=True).start()
 
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     server.daemon_threads = True

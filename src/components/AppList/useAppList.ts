@@ -39,9 +39,10 @@ export function useAppList(apps: AppEntry[]) {
   }, [selectedIndex]);
 
   const moveSelection = (delta: number) => {
-    setSelectedIndex((index) =>
-      apps.length === 0 ? 0 : (index + delta + apps.length) % apps.length,
-    );
+    setSelectedIndex((index) => {
+      if (apps.length === 0) return 0;
+      return Math.min(Math.max(index + delta, 0), apps.length - 1);
+    });
   };
 
   const selectedApp =

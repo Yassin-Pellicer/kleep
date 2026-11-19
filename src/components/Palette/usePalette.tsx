@@ -33,7 +33,6 @@ export function usePalette() {
   const {
     listRef,
     selectedIndex,
-    setSelectedIndex,
     moveSelection,
     selectedApp,
   } = useAppList(apps);
@@ -47,7 +46,6 @@ export function usePalette() {
   const {
     listRef: clipboardListRef,
     selectedIndex: clipboardSelectedIndex,
-    setSelectedIndex: setClipboardSelectedIndex,
     moveSelection: moveClipboardSelection,
     selected: clipboardSelected,
   } = useClipboardList(clipboard.entries);
@@ -117,7 +115,7 @@ export function usePalette() {
     setQuery("");
     const reply = await assistant.send(text, { voice: true });
     requestAnimationFrame(() => inputRef.current?.focus());
-    if (reply) {
+    if (reply?.content.trim()) {
       await voice.speak(reply.content, transcript.language);
     }
   };
@@ -155,6 +153,16 @@ export function usePalette() {
       );
     });
   };
+
+  const copyClipboardEntry = (entry: ClipboardEntry): Promise<void> =>
+    clipboard.copy(entry.id).catch((error: unknown) => {
+      setLaunchError(
+        typeof error === "string"
+          ? error
+          : "Couldn't copy to the clipboard.",
+      );
+      throw error;
+    });
 
   const deleteClipboardEntry = (entry: ClipboardEntry) => {
     void clipboard.remove(entry.id).catch((error: unknown) => {
@@ -315,7 +323,6 @@ export function usePalette() {
     apps,
     listRef,
     selectedIndex,
-    setSelectedIndex,
     launchError,
     launch,
     handleKeyDown,
@@ -331,8 +338,8 @@ export function usePalette() {
     clipboardActive,
     clipboardListRef,
     clipboardSelectedIndex,
-    setClipboardSelectedIndex,
     pasteClipboardEntry,
+    copyClipboardEntry,
     deleteClipboardEntry,
   };
 }

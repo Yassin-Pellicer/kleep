@@ -55,8 +55,15 @@
   font-variant-numeric: tabular-nums;
 }
 
-.clipboard-list__delete {
+.clipboard-list__actions {
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.clipboard-list__copy,
+.clipboard-list__delete {
   display: grid;
   place-items: center;
   width: 20px;
@@ -78,11 +85,19 @@
     color 120ms ease;
 }
 
+.clipboard-list__item:hover .clipboard-list__copy,
 .clipboard-list__item:hover .clipboard-list__delete,
+.clipboard-list__item--selected .clipboard-list__copy,
 .clipboard-list__item--selected .clipboard-list__delete,
+.clipboard-list__copy:focus-visible,
 .clipboard-list__delete:focus-visible {
   opacity: 1;
   pointer-events: auto;
+}
+
+.clipboard-list__copy:hover {
+  background: rgba(129, 140, 248, 0.18);
+  color: #a5b4fc;
 }
 
 .clipboard-list__delete:hover {

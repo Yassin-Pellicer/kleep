@@ -22,6 +22,8 @@ const FADE: Duration = Duration::from_millis(140);
 /// Small pause after hiding so the compositor can move focus back to the
 /// window that was focused before the palette opened.
 const PASTE_SETTLE: Duration = Duration::from_millis(20);
+/// A clipboard write briefly borrows focus; keep the palette open this long.
+const CLIPBOARD_FOCUS_GUARD: Duration = Duration::from_millis(1_500);
 
 /// When the palette was last shown. Focus-loss events that fire while the
 /// window is still being mapped must not hide it again.
@@ -288,6 +290,22 @@ fn hide_palette(app: AppHandle) {
 }
 
 #[tauri::command]
+fn clipboard_copy(id: String, app: AppHandle) -> Result<(), String> {
+    // `wl-copy` borrows keyboard focus while it claims the selection, which
+    // would otherwise trigger the focus-loss handler and close the palette.
+    clipboard::suppress_focus_hide(CLIPBOARD_FOCUS_GUARD);
+
+    let result = clipboard::copy_to_clipboard(&id);
+
+    // Give focus back to the palette so the input keeps receiving keys.
+    if let Some(window) = main_window(&app) {
+        let _ = window.set_focus();
+    }
+
+    result
+}
+
+#[tauri::command]
 fn clipboard_paste(id: String, app: AppHandle) -> Result<(), String> {
     let window = main_window(&app).ok_or_else(|| "palette window not found".to_string())?;
 
@@ -336,7 +354,7 @@ pub fn run() {
             apps::launch_app,
             assistant::assistant_chat,
             clipboard::clipboard_list,
-            clipboard::clipboard_copy,
+            clipboard_copy,
             clipboard::clipboard_delete,
             clipboard::clipboard_clear,
             clipboard_paste,
@@ -356,6 +374,7 @@ pub fn run() {
                 let _ = clipboard::prepare_paste();
             });
             voice::preload();
+            assistant::preload();
 
             if let Some(window) = app.get_webview_window(MAIN_WINDOW) {
                 fit_to_screen(&window);
@@ -379,6 +398,11 @@ pub fn run() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::Focused(false) = event {
+                // Copying to the clipboard can momentarily move focus away
+                // (wl-copy needs an input serial). That must not dismiss Kleep.
+                if clipboard::focus_hide_suppressed() {
+                    return;
+                }
                 let grace_over = LAST_SHOWN
                     .lock()
                     .ok()

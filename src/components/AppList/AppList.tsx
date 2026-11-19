@@ -6,7 +6,6 @@ type AppListProps = {
   apps: AppEntry[];
   listRef: RefObject<HTMLUListElement | null>;
   selectedIndex: number;
-  onSelectedIndexChange: (index: number) => void;
   onLaunch: (app: AppEntry) => void;
 };
 
@@ -14,7 +13,6 @@ export function AppList({
   apps,
   listRef,
   selectedIndex,
-  onSelectedIndexChange,
   onLaunch,
 }: AppListProps) {
   if (apps.length === 0) return null;
@@ -35,7 +33,6 @@ export function AppList({
           className={`app-list__item${
             index === selectedIndex ? " app-list__item--selected" : ""
           }`}
-          onMouseEnter={() => onSelectedIndexChange(index)}
           onClick={() => onLaunch(app)}
         >
           <span className="app-list__icon">

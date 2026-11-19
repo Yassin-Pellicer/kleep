@@ -12,7 +12,7 @@ use serde_json::{Value, json};
 use crate::structs::{VoiceRecordingStatus, VoiceTranscript};
 
 const PORT: u16 = 8765;
-const PROTOCOL_VERSION: u64 = 2;
+const PROTOCOL_VERSION: u64 = 16;
 const START_TIMEOUT: Duration = Duration::from_secs(120);
 
 static SERVER: LazyLock<Mutex<Option<Child>>> = LazyLock::new(|| Mutex::new(None));

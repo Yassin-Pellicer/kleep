@@ -71,7 +71,9 @@ export function useAssistant(resetKey: number) {
 
       setMessages([
         ...history,
-        { role: "assistant", content: reply.content },
+        ...(reply.content.trim()
+          ? [{ role: "assistant" as const, content: reply.content }]
+          : []),
       ]);
       setStatus("idle");
       return reply;

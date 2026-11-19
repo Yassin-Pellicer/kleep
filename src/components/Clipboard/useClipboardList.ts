@@ -37,11 +37,10 @@ export function useClipboardList(entries: ClipboardEntry[]) {
   }, [selectedIndex]);
 
   const moveSelection = (delta: number) => {
-    setSelectedIndex((index) =>
-      entries.length === 0
-        ? 0
-        : (index + delta + entries.length) % entries.length,
-    );
+    setSelectedIndex((index) => {
+      if (entries.length === 0) return 0;
+      return Math.min(Math.max(index + delta, 0), entries.length - 1);
+    });
   };
 
   const selected =

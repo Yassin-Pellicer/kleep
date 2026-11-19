@@ -96,6 +96,9 @@ export function Chat({ messages, status, error, onExit }: ChatProps) {
         {status === "error" && error && (
           <p className="chat__error" role="alert">
             {ERROR_MESSAGES[error.kind] ?? "Something went wrong."}
+            {error.kind === "badResponse" && error.message
+              ? ` — ${error.message}`
+              : ""}
           </p>
         )}
       </div>

@@ -39,7 +39,6 @@ export function Palette() {
     apps,
     listRef,
     selectedIndex,
-    setSelectedIndex,
     launchError,
     launch,
     handleKeyDown,
@@ -55,8 +54,8 @@ export function Palette() {
     clipboardActive,
     clipboardListRef,
     clipboardSelectedIndex,
-    setClipboardSelectedIndex,
     pasteClipboardEntry,
+    copyClipboardEntry,
     deleteClipboardEntry,
   } = usePalette();
 
@@ -120,8 +119,8 @@ export function Palette() {
                 entries={clipboard.entries}
                 listRef={clipboardListRef}
                 selectedIndex={clipboardSelectedIndex}
-                onSelectedIndexChange={setClipboardSelectedIndex}
                 onActivate={pasteClipboardEntry}
+                onCopy={copyClipboardEntry}
                 onDelete={deleteClipboardEntry}
               />
             ) : hasApps ? (
@@ -129,7 +128,6 @@ export function Palette() {
                 apps={apps}
                 listRef={listRef}
                 selectedIndex={selectedIndex}
-                onSelectedIndexChange={setSelectedIndex}
                 onLaunch={launch}
               />
             ) : chatActive ? (

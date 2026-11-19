@@ -4,6 +4,7 @@ use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -32,6 +33,11 @@ const UI_DEV_SETUP: libc::c_ulong = 0x405c_5503;
 const UI_DEV_CREATE: libc::c_ulong = 0x0000_5501;
 
 static VIRTUAL_KEYBOARD: LazyLock<Mutex<Option<File>>> = LazyLock::new(|| Mutex::new(None));
+
+/// While a clipboard write is in flight, the focus-loss handler must not hide
+/// the palette: `wl-copy` borrows keyboard focus briefly to get the input serial
+/// it needs to own the selection.
+static SUPPRESS_FOCUS_HIDE_UNTIL_MS: AtomicU64 = AtomicU64::new(0);
 
 #[repr(C)]
 struct UinputInputId {
@@ -113,6 +119,16 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis() as u64)
         .unwrap_or(0)
+}
+
+/// Keeps the palette open for `duration` even if the window loses focus.
+pub fn suppress_focus_hide(duration: Duration) {
+    let until = now_ms().saturating_add(duration.as_millis() as u64);
+    SUPPRESS_FOCUS_HIDE_UNTIL_MS.store(until, Ordering::SeqCst);
+}
+
+pub fn focus_hide_suppressed() -> bool {
+    now_ms() < SUPPRESS_FOCUS_HIDE_UNTIL_MS.load(Ordering::SeqCst)
 }
 
 fn hash_text(text: &str) -> String {
@@ -411,11 +427,6 @@ pub fn clipboard_list() -> Vec<ClipboardEntry> {
         .lock()
         .map(|store| store.entries.clone())
         .unwrap_or_default()
-}
-
-#[tauri::command]
-pub fn clipboard_copy(id: String) -> Result<(), String> {
-    copy_to_clipboard(&id)
 }
 
 #[tauri::command]
