@@ -2,6 +2,7 @@ mod command;
 mod context;
 mod kind;
 mod open_app;
+mod play_video;
 mod run_in_terminal;
 mod system_power;
 mod web_search;
@@ -15,6 +16,7 @@ pub use kind::ToolKind;
 pub fn definitions(web_search: bool) -> Vec<Value> {
     let mut kinds = vec![
         ToolKind::OpenApp,
+        ToolKind::PlayVideo,
         ToolKind::RunInTerminal,
         ToolKind::RunCommand,
         ToolKind::SystemPower,

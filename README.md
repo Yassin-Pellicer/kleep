@@ -47,6 +47,7 @@ If your system does not have FUSE installed, run it with:
 - On Wayland, compositors do not allow the built-in global shortcut. Bind your
   own desktop shortcut to `kleep --toggle` (or the full AppImage path).
 - `kleep --version` prints the version, and `kleep --help` lists the flags.
+- `kleep --listen` opens the palette and starts recording a voice request right away.
 - To start Kleep in the background on login, use `kleep --hidden`.
 
 Example autostart entry (`~/.config/autostart/kleep.desktop`):
@@ -180,7 +181,8 @@ Log out and back in for the group change to take effect.
   paste directly into the focused window.
 - **Dictionary:** look up a word or quoted phrase; results come from DeepSeek.
 - **Chat:** type a multi-word prompt to talk to the assistant. It can open apps
-  and links, run shell commands, and search the web.
+  and links, play videos and music from YouTube, run shell commands, and search
+  the web.
 - **Voice:** press the microphone, speak, and the transcript is sent to the
   assistant. Replies to voice prompts are read aloud.
 
@@ -222,6 +224,7 @@ models: choose them in the config file and pull them yourself. Use
 - Rust stable
 - Tauri Linux dependencies (WebKitGTK 4.1, GTK 3, etc.)
 - Python 3 with `venv` for voice
+- `yt-dlp` for video playback (`python3 -m pip install --user yt-dlp`)
 - `libfuse2` only if you want to run the generated AppImage locally
 
 ### Build

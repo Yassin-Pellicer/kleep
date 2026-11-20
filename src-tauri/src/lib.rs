@@ -8,7 +8,10 @@ mod services;
 mod tools;
 
 use app::shortcuts::{is_wayland, register_shortcuts};
-use app::window::{fit_to_screen, main_window, show_palette_on_launch, toggle_palette};
+use app::window::{
+    fit_to_screen, main_window, show_palette_listening_on_launch, show_palette_on_launch,
+    toggle_palette,
+};
 
 const HELP: &str = "\
 Kleep - keyboard-first desktop palette
@@ -16,6 +19,7 @@ Kleep - keyboard-first desktop palette
 Usage:
   kleep              Show the palette
   kleep --toggle     Toggle the palette
+  kleep --listen     Show the palette and start listening
   kleep --hidden     Start in the background without showing
   kleep --version    Print the version
   kleep --help       Show this help
@@ -39,6 +43,7 @@ pub fn run() {
     }
 
     let start_hidden = arguments.iter().any(|arg| arg == "--hidden");
+    let start_listening = arguments.iter().any(|arg| arg == "--listen");
 
     // Loads DEEPSEEK_API_KEY from .env files. The key is only ever read by the
     // Rust side and never exposed to the webview.
@@ -50,7 +55,11 @@ pub fn run() {
     tauri::Builder::default()
         // Must be registered first: a second launch forwards its arguments here.
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            if argv.iter().any(|arg| arg == "--toggle") {
+            if argv.iter().any(|arg| arg == "--listen") {
+                if let Some(window) = main_window(app) {
+                    show_palette_listening_on_launch(&window);
+                }
+            } else if argv.iter().any(|arg| arg == "--toggle") {
                 toggle_palette(app);
             } else if !argv.iter().any(|arg| arg == "--hidden")
                 && let Some(window) = main_window(app)
@@ -113,7 +122,9 @@ pub fn run() {
 
             // A normal launch shows the palette; `--hidden` keeps it in the
             // background for autostart entries.
-            if !start_hidden && let Some(window) = main_window(app.handle()) {
+            if start_listening && let Some(window) = main_window(app.handle()) {
+                show_palette_listening_on_launch(&window);
+            } else if !start_hidden && let Some(window) = main_window(app.handle()) {
                 show_palette_on_launch(&window);
             }
             Ok(())

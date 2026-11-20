@@ -171,7 +171,7 @@ install_system_dependencies() {
   if command -v pacman >/dev/null 2>&1; then
     local packages=(
       base-devel curl wget file openssl gtk3 libsoup3 webkit2gtk-4.1
-      librsvg wl-clipboard xclip libpulse python python-pip
+      librsvg wl-clipboard xclip libpulse python python-pip yt-dlp
     )
     if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
       packages+=(nodejs npm)
@@ -185,7 +185,7 @@ install_system_dependencies() {
     local packages=(
       build-essential curl wget file libssl-dev libgtk-3-dev libsoup-3.0-dev
       libwebkit2gtk-4.1-dev librsvg2-dev python3 python3-venv python3-pip
-      wl-clipboard xclip pulseaudio-utils
+      wl-clipboard xclip pulseaudio-utils yt-dlp
     )
     if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
       packages+=(nodejs npm)
@@ -200,7 +200,7 @@ install_system_dependencies() {
     local packages=(
       gcc gcc-c++ make curl wget file openssl-devel gtk3-devel libsoup3-devel
       webkit2gtk4.1-devel librsvg2-devel python3 python3-pip wl-clipboard
-      xclip pulseaudio-utils
+      xclip pulseaudio-utils yt-dlp
     )
     if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
       packages+=(nodejs npm)
@@ -214,7 +214,7 @@ install_system_dependencies() {
     local packages=(
       gcc gcc-c++ make curl wget file libopenssl-devel gtk3-devel
       libsoup-3_0-devel webkit2gtk4.1-devel librsvg-devel python3 python3-pip
-      wl-clipboard xclip pulseaudio-utils
+      wl-clipboard xclip pulseaudio-utils yt-dlp
     )
     if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
       packages+=(nodejs npm)

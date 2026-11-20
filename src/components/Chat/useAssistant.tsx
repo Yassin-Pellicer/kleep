@@ -9,11 +9,8 @@ import type {
 import { useRequestGuard } from "../../hooks/useRequestGuard";
 import { normalizeError } from "../../lib/normalizeError";
 
-function assistantChat(
-  messages: ChatMessage[],
-  voice = false,
-): Promise<AssistantReply> {
-  return invoke<AssistantReply>("assistant_chat", { messages, voice });
+function assistantChat(messages: ChatMessage[]): Promise<AssistantReply> {
+  return invoke<AssistantReply>("assistant_chat", { messages });
 }
 
 export function useAssistant(resetKey: number) {
@@ -43,10 +40,7 @@ export function useAssistant(resetKey: number) {
     sending.current = false;
   }
 
-  const send = async (
-    prompt: string,
-    options?: { voice?: boolean },
-  ): Promise<AssistantReply | null> => {
+  const send = async (prompt: string): Promise<AssistantReply | null> => {
     const content = prompt.trim();
     if (!content || sending.current) return null;
 
@@ -61,7 +55,7 @@ export function useAssistant(resetKey: number) {
     const id = guard.next();
 
     try {
-      const reply = await assistantChat(history, options?.voice ?? false);
+      const reply = await assistantChat(history);
       if (!guard.isCurrent(id)) return null;
 
       setMessages([

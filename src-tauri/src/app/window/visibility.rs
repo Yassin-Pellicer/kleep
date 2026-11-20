@@ -1,6 +1,7 @@
 use std::thread;
 use std::time::Duration;
 
+use serde_json::json;
 use tauri::{AppHandle, Emitter, WebviewWindow};
 
 use crate::app::gnome;
@@ -14,7 +15,7 @@ const FADE: Duration = Duration::from_millis(140);
 /// window that was focused before the palette opened.
 const PASTE_SETTLE: Duration = Duration::from_millis(20);
 
-fn reveal_palette(window: &WebviewWindow) {
+fn reveal_palette(window: &WebviewWindow, listen: bool) {
     state::invalidate_hides();
     state::cancel_pending_paste();
     state::mark_shown();
@@ -33,7 +34,7 @@ fn reveal_palette(window: &WebviewWindow) {
     let window = window.clone();
     thread::spawn(move || {
         thread::sleep(Duration::from_millis(60));
-        let _ = window.emit("palette-shown", ());
+        let _ = window.emit("palette-shown", json!({ "listen": listen }));
     });
 }
 
@@ -43,14 +44,23 @@ pub fn show_palette(window: &WebviewWindow) {
         return;
     }
 
-    reveal_palette(window);
+    reveal_palette(window, false);
+}
+
+/// Shows the palette and starts recording a voice request immediately.
+pub fn show_palette_listening_on_launch(window: &WebviewWindow) {
+    show_palette_on_launch_with(window, true);
 }
 
 /// Opening Kleep from the application grid happens while the GNOME Overview
 /// is still closing. Wait for it to settle instead of silently doing nothing.
 pub fn show_palette_on_launch(window: &WebviewWindow) {
+    show_palette_on_launch_with(window, false);
+}
+
+fn show_palette_on_launch_with(window: &WebviewWindow, listen: bool) {
     if !gnome::overview_is_active() {
-        reveal_palette(window);
+        reveal_palette(window, listen);
         return;
     }
 
@@ -59,12 +69,12 @@ pub fn show_palette_on_launch(window: &WebviewWindow) {
         for _ in 0..10 {
             thread::sleep(Duration::from_millis(150));
             if !gnome::overview_is_active() {
-                reveal_palette(&window);
+                reveal_palette(&window, listen);
                 return;
             }
         }
 
-        reveal_palette(&window);
+        reveal_palette(&window, listen);
     });
 }
 

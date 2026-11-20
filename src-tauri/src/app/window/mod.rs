@@ -12,4 +12,6 @@ pub fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
 pub use focus::handle_focus_lost;
 pub use geometry::fit_to_screen;
 pub use state::request_paste;
-pub use visibility::{hide_with_fade, show_palette_on_launch, toggle_palette};
+pub use visibility::{
+    hide_with_fade, show_palette_listening_on_launch, show_palette_on_launch, toggle_palette,
+};

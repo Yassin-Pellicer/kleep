@@ -19,7 +19,9 @@ pub(super) fn definition() -> Value {
                             pass a sentence. The installed application list is provided in the \
                             system context: prefer those exact names, including games such as \
                             \"Chess\" or \"Mines\". If the result says no application matches, \
-                            retry once with one of the suggested names.",
+                            retry once with one of the suggested names. Never use this tool to \
+                            play or watch videos or music, or to search for them; use \
+                            play_video instead.",
             "strict": true,
             "parameters": {
                 "type": "object",

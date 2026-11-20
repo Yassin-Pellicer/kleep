@@ -18,7 +18,9 @@ pub(super) fn definition() -> Value {
         "function": {
             "name": "web_search",
             "description": "Search the web for current information. Use this for news, \
-                            recent events, prices, schedules, or facts that may have changed.",
+                            recent events, prices, schedules, or facts that may have changed. \
+                            Do not use it to play or watch videos or music, or to look up \
+                            something to play; use play_video instead.",
             "strict": true,
             "parameters": {
                 "type": "object",

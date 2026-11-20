@@ -115,7 +115,9 @@ export function usePalette() {
     }
 
     setQuery("");
-    const reply = await assistant.send(text, { voice: true });
+    // Send voice prompts through the same assistant path as typed prompts so
+    // spoken commands execute tools exactly like typed ones.
+    const reply = await assistant.send(text);
     requestAnimationFrame(() => inputRef.current?.focus());
     if (reply?.opened) {
       dismiss();
@@ -272,14 +274,17 @@ export function usePalette() {
     };
 
     const unlisteners = [
-      listen("palette-shown", () => {
+      listen<{ listen?: boolean }>("palette-shown", (event) => {
         cancelReset();
         setQuery("");
         setShowCount((count) => count + 1);
         setIsOpen(true);
         voice.setError(null);
         voice.clearAutoTranscript();
-        void voice.cancel();
+        const cancelled = voice.cancel();
+        if (event.payload?.listen) {
+          void cancelled.then(() => voice.start());
+        }
         requestAnimationFrame(focusInput);
       }),
       listen("palette-hide", () => {
